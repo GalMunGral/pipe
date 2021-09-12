@@ -1,3 +1,4 @@
+#include <string.h>
 #include "lib.h"
 
 static Session *sessions = NULL;
@@ -13,10 +14,19 @@ size_t session_count(void)
 Session *add_session(int socket)
 {
   Session *s = (Session *)malloc(sizeof(Session));
+  memset(s, 0, sizeof(Session));
   s->socket = socket;
   s->next = sessions;
   sessions = s;
   return s;
+}
+
+Session *get_session(int socket)
+{
+  Session *cur = sessions;
+  while (cur && cur->socket != socket)
+    cur = cur->next;
+  return cur;
 }
 
 void remove_session(int socket)

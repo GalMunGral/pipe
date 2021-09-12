@@ -9,14 +9,32 @@
 #define ADDR_SIZE sizeof(struct sockaddr_in)
 #define BUF_SIZE 4096
 
+
+typedef struct {
+  char buffer[BUF_SIZE];
+  int index;
+  int n;
+} Buffer;
+
+typedef struct {
+  Buffer in;
+  Buffer out;
+  int key;
+} State;
+
 typedef struct session {
   int socket;
-  char buffer[BUF_SIZE];
-  size_t read_n;
+  int peer;
+  State state;
+  enum {
+    CREATED,
+    CONNECTED
+  } status;
   struct session *next;
 } Session;
 
 Session *add_session(int socket);
+Session *get_session(int socket);
 void remove_session(int socket);
 size_t session_count(void);
 

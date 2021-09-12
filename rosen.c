@@ -41,7 +41,6 @@ int main(int argc, char *argv[])
       dprintf(2, "[%d] failed to poll\n", errno);
 
     for (int i = 0; i < n; ++i) {
-      printf("%d, %hu, %hu\n", fds[i].fd, fds[i].events, fds[i].revents);
       if (!fds[i].revents) continue;
       if (fds[i].fd == s) {
         accept_connection(fds[i].fd);
