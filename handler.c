@@ -1,4 +1,5 @@
 #include <string.h>
+#include <netinet/in.h>
 #include "lib.h"
 
 void accept_connection(int sock)
@@ -66,12 +67,12 @@ void handle_session(struct pollfd *fd)
   }
 
   int nread = 0;
-  void advance_state(State *s);
+  void advance_state(Session *s);
 
   if (-1 == (nread = recv(
     sock, 
-    sess->state.in.buffer + sess->state.in.n,
-    BUF_SIZE - sess->state.in.n,
+    sess->state.in.buf + sess->state.in.len,
+    BUF_SIZE - sess->state.in.len,
     0
   ))) {
     dprintf(2, "[%d] failed to read\n", errno);
@@ -81,50 +82,154 @@ void handle_session(struct pollfd *fd)
     remove_session(sock);
   } else {
     printf("advance state\n");
-    sess->state.in.n += nread;
-    advance_state(&sess->state);
+    sess->state.in.len += nread;
+    advance_state(sess);
     printf("recv (%d)\n", nread);
   }
 }
 
-void advance_state(State *s)
+
+void advance_state(Session *sess)
 {
+  State *s = &sess->state;
+  printf("STATE [%d] ->\n", s->key);
   for(;;) {
     switch (s->key) {
-      case 0:
-        if (s->in.n - s->in.index >= 5) {
-          strncpy(s->out.buffer + s->out.index,
-            s->in.buffer + s->in.index, 5);
-          s->out.index += 5;
-          s->in.index += 5;
-          s->out.buffer[s->out.index++] = '+';
+      case -1: { // ERROR
+        // TODO
+      }
+      case 0: { // VER (x05)
+        if (s->in.len - s->in.idx>= 1) {
+          s->in.idx += 1;
           s->key = 1;
           break;
-        } else {
+        }
+      }
+      case 1: { // NMETHODS (1) + METHODS (1-255)
+        int nmethods = 0, noauth = 0;
+        if (s->in.len - s->in.idx < 2) return;
+        nmethods = s->in.buf[s->in.idx];
+        if (s->in.len - s->in.idx - 1 < nmethods) return;
+        for (int i = 0; i < nmethods; i++) {
+          if (s->in.buf[s->in.idx + i] == 0) {
+            noauth = 1;
+            break;
+          }
+        }
+        if (!noauth) {
+          s->key = -1;
           return;
         }
-      case 1:
-        if (s->in.n - s->in.index >= 5) {
-          strncpy(s->out.buffer + s->out.index,
-            s->in.buffer + s->in.index, 5);
-          s->out.index += 5;
-          s->in.index += 5;
-          s->key = 2;
-          break;
-        } else {
+
+        // VER (x05) + METHOD (x00)
+        unsigned short ver_methods = htons(0x0500);
+        if (2 != (write(sess->socket, (void *)&ver_methods, 2)))
+          dprintf(2, "[%d] failed to write\n", errno);
+
+        s->in.idx += 1 + nmethods;
+        s->key = 2;
+        break;
+      }
+      case 2: { // VER (x05) + CMD (x01/x02/x03) + RSV (x00)
+        if (s->in.len - s->in.idx < 3) return;
+        if (s->in.buf[s->in.idx + 1] != 1) {
+          s->key = -1;
           return;
         }
+        s->in.idx += 3;
+        s->key = 3;
+        break;
+      }
+      case 3: { // ATYP (x01/x03/x04) + DST.ADDR (N)
+        if (s->in.len - s->in.idx < 1) return;
+        int atyp = s->in.buf[s->in.idx];
+        sess->dest.atyp = atyp;
+        switch (atyp) {
+          case 1: {
+            if (s->in.len - s->in.idx - 1 < 4) return;
+            sess->dest.addr.in = *(struct in_addr *)(s->in.buf + s->in.idx + 1);
+            s->in.idx += 5;
+            break;
+          }
+          case 3: {
+            int n = s->in.buf[s->in.idx + 1];
+            if (s->in.len - s->in.idx - 1 < n) return;
+            sess->dest.addr.dn = strndup(s->in.buf + s->in.idx + 1, n);
+            s->in.idx += 2 + n;
+            break;
+          }
+          case 4: {
+            if (s->in.len - s->in.idx - 1 < 16) return;
+            sess->dest.addr.in6 = *(struct in6_addr *)(s->in.buf + s->in.idx + 1);
+            s->in.idx += 17;
+            break;
+          }
+          default: {
+            s->key = -1;
+            return;
+          }
+        }
+        s->key = 4;
+        break;
+      }
+      case 4: { // DST.PORT (2)
+        if (s->in.len - s->in.idx < 2) return;
+        sess->dest.port = *(unsigned short *)(s->in.buf + s->in.idx);
+        s->in.idx += 2;
+        s->key = 5;
+        // printf("SOCKS5 REQEST: (%s, %hu)", sess->dest.addr, sess->dest.port);
+        printf("REQUESTING %d\n", sess->dest.atyp);
+
+        switch (sess->dest.atyp) {
+          int sock;
+          case IPV4: {
+            printf("IPV4\n");
+            sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+            struct sockaddr_in sin;
+            sin.sin_len = sizeof(sin);
+            sin.sin_family = AF_INET;
+            sin.sin_port = sess->dest.port;
+            sin.sin_addr = sess->dest.addr.in;
+
+            if (-1 == connect(sock, (struct sockaddr *)&sin, sizeof(sin))) {
+              dprintf(2, "[%d] failed to connect\n", errno);
+              s->key = -1;
+              return;
+            }
+            printf("IPV4 connected\n");
+            break;
+          }
+          case DOMAIN: {
+            // TODO
+            break;
+          }
+          case IPV6: {
+            printf("IPV6\n");
+            sock = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP);
+            struct sockaddr_in6 sin6;
+            sin6.sin6_len = sizeof(sin6);
+            sin6.sin6_family = AF_INET6;
+            sin6.sin6_flowinfo = 0;
+            sin6.sin6_port = sess->dest.port;
+            sin6.sin6_addr = sess->dest.addr.in6;
+            if (-1 == connect(sock, (struct sockaddr *)&sin6, sizeof(sin6))) {
+              dprintf(2, "[%d] failed to connect\n", errno);
+              s->key = -1;
+              return;
+            }
+            printf("IPV6 connected\n");
+            break;
+          }
+          default:
+            s->key = -1;
+            return;
+        }
+        break;
+      }
       default:
         return;
     }
-    printf("STATE [%d]\n", s->key);
-    printf(
-      ">>>IN(%d): %s<<<\n\n>>>OUT(%d): %s<<<\n\n=",
-      s->in.index,
-      s->in.buffer,
-      s->out.index,
-      s->out.buffer
-    );
+    printf("->STATE [%d]\n", s->key);
   }
 
 }

@@ -11,20 +11,44 @@
 
 
 typedef struct {
-  char buffer[BUF_SIZE];
-  int index;
-  int n;
+  char buf[BUF_SIZE];
+  int idx;
+  int len;
 } Buffer;
 
 typedef struct {
+  int key;
   Buffer in;
   Buffer out;
-  int key;
 } State;
+
+typedef struct {
+  int (*check)(char *start, size_t len);
+  size_t consume;
+  size_t copy;
+  char *produce;
+} Rule;
+
+enum addr_t {
+  IPV4 = 1,
+  DOMAIN = 3,
+  IPV6 = 4
+};
+
+typedef struct {
+  enum addr_t atyp;
+  union {
+    struct in_addr in;
+    struct in6_addr in6;
+    char *dn;
+  } addr;
+  unsigned short port;
+} Address;
 
 typedef struct session {
   int socket;
   int peer;
+  Address dest;
   State state;
   enum {
     CREATED,
