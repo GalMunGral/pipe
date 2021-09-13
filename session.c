@@ -7,7 +7,7 @@ size_t session_count(void)
 {
   size_t total = 0;
   Session *cur = sessions;
-  for (; cur; cur = cur->next) ++total;
+  for (; cur; cur = cur->next) total += cur->peer ? 2 : 1;
   return total;
 }
 
@@ -49,9 +49,15 @@ void remove_session(int socket)
 void get_pollfds(struct pollfd *fds, size_t n)
 {
   Session *cur = sessions;
-  for (int i = 0; i < n; ++i, cur = cur->next) {
+  int i = 0;
+  while (i < n) {
     fds[i].fd = cur->socket;
-    fds[i].events = POLLERR | POLLHUP | POLLIN;
+    fds[i++].events = POLLERR | POLLHUP | POLLIN;
+    if (cur->peer) {
+      fds[i].fd = cur->peer;
+      fds[i++].events = POLLERR | POLLHUP | POLLIN;
+    }
+    cur = cur->next;
   }
 }
 

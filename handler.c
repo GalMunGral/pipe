@@ -154,7 +154,7 @@ void advance_state(Session *sess)
           case 3: {
             int n = s->in.buf[s->in.idx + 1];
             if (s->in.len - s->in.idx - 1 < n) return;
-            sess->dest.addr.dn = strndup(s->in.buf + s->in.idx + 1, n);
+            // sess->dest.addr.dn = strndup(s->in.buf + s->in.idx + 1, n);
             s->in.idx += 2 + n;
             break;
           }
@@ -175,23 +175,18 @@ void advance_state(Session *sess)
       case 4: { // DST.PORT (2)
         if (s->in.len - s->in.idx < 2) return;
         sess->dest.port = *(unsigned short *)(s->in.buf + s->in.idx);
-        s->in.idx += 2;
-        s->key = 5;
-        // printf("SOCKS5 REQEST: (%s, %hu)", sess->dest.addr, sess->dest.port);
-        printf("REQUESTING %d\n", sess->dest.atyp);
 
         switch (sess->dest.atyp) {
-          int sock;
           case IPV4: {
-            printf("IPV4\n");
-            sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+            sess->peer = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
             struct sockaddr_in sin;
             sin.sin_len = sizeof(sin);
             sin.sin_family = AF_INET;
             sin.sin_port = sess->dest.port;
             sin.sin_addr = sess->dest.addr.in;
 
-            if (-1 == connect(sock, (struct sockaddr *)&sin, sizeof(sin))) {
+            
+            if (-1 == connect(sess->peer, (struct sockaddr *)&sin, sizeof(sin))) {
               dprintf(2, "[%d] failed to connect\n", errno);
               s->key = -1;
               return;
@@ -204,15 +199,14 @@ void advance_state(Session *sess)
             break;
           }
           case IPV6: {
-            printf("IPV6\n");
-            sock = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP);
+            sess->peer = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP);
             struct sockaddr_in6 sin6;
             sin6.sin6_len = sizeof(sin6);
             sin6.sin6_family = AF_INET6;
             sin6.sin6_flowinfo = 0;
             sin6.sin6_port = sess->dest.port;
             sin6.sin6_addr = sess->dest.addr.in6;
-            if (-1 == connect(sock, (struct sockaddr *)&sin6, sizeof(sin6))) {
+            if (-1 == connect(sess->peer, (struct sockaddr *)&sin6, sizeof(sin6))) {
               dprintf(2, "[%d] failed to connect\n", errno);
               s->key = -1;
               return;
@@ -224,7 +218,49 @@ void advance_state(Session *sess)
             s->key = -1;
             return;
         }
+        s->in.idx += 2;
+        s->key = 5;
         break;
+      }
+      case 5: { // VER (x05) + REP (x00/x0X) + RSV (x00) + ATYP (x01)
+        switch (sess->dest.atyp) {
+          int sock;
+          case IPV4: {
+            struct sockaddr_in sin;
+            socklen_t addr_len;
+            getsockname(sess->peer, (struct sockaddr *)&sin, &addr_len);
+            unsigned long buf = htonl(0x05000001);
+            if (-1 == write(sess->socket, &buf, 4))
+              dprintf(2, "[%d] failed to write\n", errno);
+            if (-1 == write(sess->socket, &sin.sin_addr, 4))
+              dprintf(2, "[%d] failed to write\n", errno);
+            if (-1 == write(sess->socket, &sin.sin_port, 2))
+              dprintf(2, "[%d] failed to write\n", errno);
+            break;
+          }
+          case DOMAIN: {
+            // TODO
+            break;
+          }
+          case IPV6: {
+            struct sockaddr_in6 sin;
+            socklen_t addr_len;
+            getsockname(sess->peer, (struct sockaddr *)&sin, &addr_len);
+            unsigned long buf = htonl(0x05000004);
+            if (-1 == write(sess->socket, &buf, 4))
+              dprintf(2, "[%d] failed to write\n", errno);
+            if (-1 == write(sess->socket, &sin.sin6_addr, 16))
+              dprintf(2, "[%d] failed to write\n", errno);
+            if (-1 == write(sess->socket, &sin.sin6_port, 2))
+              dprintf(2, "[%d] failed to write\n", errno);
+            break;
+          }
+          default:
+            s->key = -1;
+            return;
+        }
+        sess->status = CONNECTED;
+        return;
       }
       default:
         return;
