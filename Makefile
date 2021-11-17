@@ -1,17 +1,24 @@
 CC = cc
 
-all: rosen
+all: CFLAGS = -Wall -Wextra -Werror
+all: local remote socks5
 
-debug: CFLAGS = -g
+debug: CFLAGS = -g -Wall -Wextra -Werror
 debug: all
 
-rosen: rosen.o session.o handler.o lib.h
-	${CC} -o rosen rosen.o session.o handler.o
+local: local.o 
+	${CC} -o local local.o
+
+remote: remote.o 
+	${CC} -o remote remote.o
+
+socks5: socks5.o
+	${CC} -o socks5 socks5.o
 
 %.o: %.c
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:
 	rm -rf *.dSYM 
-	rm -f *.o rosen
+	rm -f *.o remote local socks5
 

@@ -1,3 +1,7 @@
 *.swp
 *.o
 *.dSYM
+.vscode/
+local
+remote
+socks5
