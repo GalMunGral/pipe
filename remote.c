@@ -46,7 +46,9 @@ int main(int argc, char **argv)
 
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_port = htons(port);
+#if !defined(__linux__)
   serv_addr.sin_len = sizeof(addr4_t);
+#endif
   serv_addr.sin_addr.s_addr = INADDR_ANY;
 
   if ((serv_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
@@ -189,7 +191,9 @@ int handshake(int src_sock)
     }
 
     addr.sin_family = AF_INET;
+#if !defined(__linux__)
     addr.sin_len = sizeof(addr4_t);
+#endif
     addr.sin_addr = *(struct in_addr *)DST_ADDR;
     addr.sin_port = DST_PORT;
 
