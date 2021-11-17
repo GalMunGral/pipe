@@ -402,7 +402,7 @@ void loop(int sock1, int sock2)
 
   for (;;)
   {
-    int res = poll((pollfd_t *)&fds, 2, 200);
+    int res = poll((pollfd_t *)&fds, 2, 2000);
 
     if (res < 0)
     {
