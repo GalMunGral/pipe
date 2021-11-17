@@ -271,7 +271,9 @@ int handshake(int src_sock)
     }
 
     addr.sin6_family = AF_INET6;
+#if !defined(__linux__)
     addr.sin6_len = sizeof(addr6_t);
+#endif
     addr.sin6_addr = *(struct in6_addr *)DST_ADDR;
     addr.sin6_port = DST_PORT;
 
