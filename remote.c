@@ -25,6 +25,8 @@ int connect_by_hostname(char *, char *);
 
 int serv_sock;
 
+signal(SIGPIPE, SIG_IGN);
+
 void cleanup()
 {
   printf("BYE-BYE!\n");

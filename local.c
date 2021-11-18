@@ -27,6 +27,8 @@ int serv_sock;
 char *REMOTE_ADDR;
 char *REMOTE_PORT;
 
+signal(SIGPIPE, SIG_IGN);
+
 void cleanup()
 {
   printf("BYE-BYE!\n");
