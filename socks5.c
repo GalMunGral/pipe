@@ -78,13 +78,13 @@ int main(int argc, char **argv)
     socklen_t addr_len = sizeof(addr4_t);
     char addr_name[1024];
 
-    if ((src_sock = accept(serv_sock, (addr_t *)&addr.sin_addr, &addr_len)) < 0)
+    if ((src_sock = accept(serv_sock, (addr_t *)&addr, &addr_len)) < 0)
     {
       fprintf(stderr, "accept()\n");
       exit(-1);
     }
 
-    if (inet_ntop(AF_INET, (addr_t *)&addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
+    if (inet_ntop(AF_INET, &addr.sin_addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
     {
       fprintf(stderr, "inet_ntop()\n");
       exit(-1);

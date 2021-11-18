@@ -79,13 +79,13 @@ int main(int argc, char **argv)
     socklen_t addr_len = sizeof(addr4_t);
     char addr_name[1024];
 
-    if ((src_sock = accept(serv_sock, (addr_t *)&addr.sin_addr, &addr_len)) < 0)
+    if ((src_sock = accept(serv_sock, (addr_t *)&addr, &addr_len)) < 0)
     {
       fprintf(stderr, "accept()\n");
       exit(-1);
     }
 
-    if (inet_ntop(AF_INET, (addr_t *)&addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
+    if (inet_ntop(AF_INET, &addr.sin_addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
     {
       fprintf(stderr, "inet_ntop()\n");
       exit(-1);
@@ -167,7 +167,7 @@ int handshake(int src_sock)
     break;
 
   default:
-    fprintf(stderr, "handshake >> ATYPE\n");
+    fprintf(stderr, "Invalid ATYPE (%d)\n", ATYPE);
     return -1;
   }
 
@@ -197,6 +197,9 @@ int handshake(int src_sock)
     addr.sin_addr = *(struct in_addr *)DST_ADDR;
     addr.sin_port = DST_PORT;
 
+    char name[1024];
+    printf("remote: %s:%hu\n", inet_ntop(AF_INET, &addr.sin_addr, name, sizeof(name)), ntohs(DST_PORT));
+
     if (connect(dst_sock, (addr_t *)&addr, sizeof(addr4_t)) < 0)
     {
       fprintf(stderr, "handshake::connect()\n");
@@ -225,6 +228,9 @@ int handshake(int src_sock)
     addr.sin6_addr = *(struct in6_addr *)DST_ADDR;
     addr.sin6_port = DST_PORT;
 
+    char name[1024];
+    printf("remote: %s:%hu\n", inet_ntop(AF_INET6, &addr.sin6_addr, name, sizeof(name)), ntohs(DST_PORT));
+
     if (connect(dst_sock, (addr_t *)&addr, sizeof(addr6_t)) < 0)
     {
       fprintf(stderr, "handshake::connect(), %d\n", errno);
@@ -247,34 +253,12 @@ int handshake(int src_sock)
     ATYPE = 0x01;
     break;
   }
-  }
-
-  if (send(src_sock, "\x05", 1, 0) < 0)
+  default:
   {
-    fprintf(stderr, "handshake << VER\n");
+    fprintf(stderr, "Invalid ATYPE (%d)\n", ATYPE);
     close(dst_sock);
     return -1;
   }
-
-  if (send(src_sock, "\x00", 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake << REP\n");
-    close(dst_sock);
-    return -1;
-  }
-
-  if (send(src_sock, "\x00", 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake << RSV\n");
-    close(dst_sock);
-    return -1;
-  }
-
-  if (send(src_sock, &ATYPE, 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake << ATYP\n");
-    close(dst_sock);
-    return -1;
   }
 
   switch (ATYPE)
@@ -291,6 +275,9 @@ int handshake(int src_sock)
       close(dst_sock);
       return -1;
     }
+
+    char name[1024];
+    printf("%s:%hu\n", inet_ntop(AF_INET, &addr.sin_addr, name, sizeof(name)), addr.sin_port);
 
     if (send(src_sock, "\x01", 1, 0) < 0)
     {
@@ -328,6 +315,9 @@ int handshake(int src_sock)
       return -1;
     }
 
+    char name[1024];
+    printf("%s:%hu\n", inet_ntop(AF_INET6, &addr.sin6_addr, name, sizeof(name)), addr.sin6_port);
+
     if (send(src_sock, "\x04", 1, 0) < 0)
     {
       fprintf(stderr, "handshake << ATYPE\n");
@@ -352,7 +342,7 @@ int handshake(int src_sock)
   }
   default:
   {
-    fprintf(stderr, "You're not supposed to be here...\n");
+    fprintf(stderr, "Invalid ATYPE (%d)\n", ATYPE);
     close(dst_sock);
     return -1;
   }
@@ -383,11 +373,11 @@ void loop(int sock1, int sock2)
       return;
     }
 
-    if (res == 0)
-    {
-      printf("TIMEOUT, LOOP EXIT\n");
-      return;
-    }
+    // if (res == 0)
+    // {
+    //   printf("TIMEOUT, LOOP EXIT\n");
+    //   return;
+    // }
 
     for (int i = 0; i < 2; i++)
     {
@@ -402,17 +392,19 @@ void loop(int sock1, int sock2)
             return;
           }
 
+          // write(1, &buf, size);
+
           if ((size = send(socks[i ^ 1], &buf, size, 0)) < 0)
           {
             fprintf(stderr, "loop::send()\n");
             return;
           }
 
-          if (size == 0)
-          {
-            printf("FINISHED, LOOP EXIT\n");
-            return;
-          }
+          // if (size == 0)
+          // {
+          //   printf("FINISHED, LOOP EXIT\n");
+          //   return;
+          // }
         }
         else
         {

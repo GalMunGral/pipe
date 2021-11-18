@@ -83,13 +83,13 @@ int main(int argc, char **argv)
     socklen_t addr_len = sizeof(addr4_t);
     char addr_name[1024];
 
-    if ((src_sock = accept(serv_sock, (addr_t *)&addr.sin_addr, &addr_len)) < 0)
+    if ((src_sock = accept(serv_sock, (addr_t *)&addr, &addr_len)) < 0)
     {
       fprintf(stderr, "accept()\n");
       exit(-1);
     }
 
-    if (inet_ntop(AF_INET, (addr_t *)&addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
+    if (inet_ntop(AF_INET, &addr.sin_addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
     {
       fprintf(stderr, "inet_ntop()\n");
       exit(-1);
@@ -232,7 +232,7 @@ int handshake(int src_sock)
     break;
 
   default:
-    fprintf(stderr, "handshake >> ATYPE\n");
+    fprintf(stderr, ">> INVALID ATYPE (%d)\n", ATYPE);
     return -1;
   }
 
@@ -242,37 +242,9 @@ int handshake(int src_sock)
     return -1;
   }
 
-  if (send(src_sock, "\x05", 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake << VER\n");
-    close(dst_sock);
-    return -1;
-  }
-
-  if (send(src_sock, "\x00", 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake << REP\n");
-    close(dst_sock);
-    return -1;
-  }
-
-  if (send(src_sock, "\x00", 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake << RSV\n");
-    close(dst_sock);
-    return -1;
-  }
-
   if (send(dst_sock, &ATYPE, 1, 0) < 0)
   {
     fprintf(stderr, "handshake --> ATYPE\n");
-    close(dst_sock);
-    return -1;
-  }
-
-  if (send(src_sock, ATYPE == 0x03 ? "\x01" : &ATYPE, 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake << ATYP\n");
     close(dst_sock);
     return -1;
   }
@@ -314,6 +286,13 @@ int handshake(int src_sock)
       close(dst_sock);
       return -1;
     }
+    break;
+  }
+  default:
+  {
+    fprintf(stderr, "INVALID ATYPE (%d)\n", ATYPE);
+    close(dst_sock);
+    return -1;
   }
   }
 
@@ -326,7 +305,35 @@ int handshake(int src_sock)
 
   if (recv(dst_sock, &ATYPE, 1, 0) < 0)
   {
-    fprintf(stderr, "handshake <-- BND_ADDR\n");
+    fprintf(stderr, "handshake <-- ATYPE\n");
+    close(dst_sock);
+    return -1;
+  }
+
+  if (send(src_sock, "\x05", 1, 0) < 0)
+  {
+    fprintf(stderr, "handshake << VER\n");
+    close(dst_sock);
+    return -1;
+  }
+
+  if (send(src_sock, "\x00", 1, 0) < 0)
+  {
+    fprintf(stderr, "handshake << REP\n");
+    close(dst_sock);
+    return -1;
+  }
+
+  if (send(src_sock, "\x00", 1, 0) < 0)
+  {
+    fprintf(stderr, "handshake << RSV\n");
+    close(dst_sock);
+    return -1;
+  }
+
+  if (send(src_sock, &ATYPE, 1, 0) < 0)
+  {
+    fprintf(stderr, "handshake << ATYP\n");
     close(dst_sock);
     return -1;
   }
@@ -367,6 +374,12 @@ int handshake(int src_sock)
       return -1;
     }
     break;
+  }
+  default:
+  {
+    fprintf(stderr, "YOU SHOULDN'T BE HERE, %d\n", ATYPE);
+    close(dst_sock);
+    return -1;
   }
   }
 
@@ -425,9 +438,11 @@ void loop(int sock1, int sock2)
           size = recv(socks[i], &buf, sizeof(buf), 0);
           if (size < 0)
           {
-            fprintf(stderr, "loop::recv()\n");
+            fprintf(stderr, "loop::recv() (%d)\n", errno);
             return;
           }
+
+          // write(1, &buf, size);
 
           if ((size = send(socks[i ^ 1], &buf, size, 0)) < 0)
           {
@@ -435,11 +450,11 @@ void loop(int sock1, int sock2)
             return;
           }
 
-          if (size == 0)
-          {
-            printf("FINISHED, LOOP EXIT\n");
-            return;
-          }
+          // if (size == 0)
+          // {
+          //   printf("FINISHED, LOOP EXIT\n");
+          //   return;
+          // }
         }
         else
         {
