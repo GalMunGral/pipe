@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
 
 typedef struct sockaddr addr_t;
 typedef struct sockaddr_in addr4_t;
@@ -25,8 +26,6 @@ int connect_by_hostname(char *, char *);
 
 int serv_sock;
 
-signal(SIGPIPE, SIG_IGN);
-
 void cleanup()
 {
   printf("BYE-BYE!\n");
@@ -38,6 +37,7 @@ int main(int argc, char **argv)
   addr4_t serv_addr;
 
   atexit(cleanup);
+  signal(SIGPIPE, SIG_IGN);
 
   if (argc < 1)
   {
