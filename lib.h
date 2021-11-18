@@ -18,12 +18,22 @@ typedef struct sockaddr_in6 addr6_t;
 typedef struct pollfd pollfd_t;
 typedef struct addrinfo addrinfo_t;
 
-int connect_by_hostname(char *, char *);
-void loop(int, int);
+int connect_by_name(char *, char *);
+int loop(int[2]);
+
+#define PORT_SIZE 2
+#define IPV4_SIZE 4
+#define IPV6_SIZE 16
+
+#define LOOP_POLL_TIMEOUT 10000
+#define EXIT_SHUTDOWN 0
+#define EXIT_POLL_ERR 1
+#define EXIT_POLL_TIMEOUT 2
+#define EXIT_RECV_ERR 3
 
 #define ensure(cond, msg)                 \
   if (!(cond))                            \
   {                                       \
-    fprintf(stderr, "[error] %s\n", msg); \
-    goto failure;                         \
+    fprintf(stderr, "(error) %s\n", msg); \
+    goto error;                           \
   }
