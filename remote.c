@@ -1,99 +1,46 @@
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <poll.h>
-#include <errno.h>
-#include <pthread.h>
-#include <signal.h>
+#include "lib.h"
 
-typedef struct sockaddr addr_t;
-typedef struct sockaddr_in addr4_t;
-typedef struct sockaddr_in6 addr6_t;
-typedef struct pollfd pollfd_t;
-typedef struct addrinfo addrinfo_t;
-
-uint16_t port = 2080;
+#define PORT 2080
 
 void *handle(void *);
-int handshake(int);
-void loop(int, int);
-int connect_by_hostname(char *, char *);
+int handle_by_type(int);
+int handle_ipv4(int src);
+int handle_ipv6(int src);
+int handle_hostname(int src);
 
-int serv_sock;
+int sock;
 
 void cleanup()
 {
   printf("BYE-BYE!\n");
-  close(serv_sock);
+  close(sock);
 }
 
-int main(int argc, char **argv)
+int main()
 {
-  addr4_t serv_addr;
-
   atexit(cleanup);
   signal(SIGPIPE, SIG_IGN);
 
-  if (argc < 1)
-  {
-    exit(-1);
-  }
-
-  printf("%s\n", argv[0]);
-
+  addr4_t serv_addr;
   serv_addr.sin_family = AF_INET;
-  serv_addr.sin_port = htons(port);
+  serv_addr.sin_port = htons(PORT);
+  serv_addr.sin_addr.s_addr = INADDR_ANY;
 #if !defined(__linux__)
   serv_addr.sin_len = sizeof(addr4_t);
 #endif
-  serv_addr.sin_addr.s_addr = INADDR_ANY;
-
-  if ((serv_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-  {
-    fprintf(stderr, "socket()\n");
-    exit(-1);
-  }
-
-  if (bind(serv_sock, (addr_t *)&serv_addr, sizeof(addr4_t)) < 0)
-  {
-    fprintf(stderr, "bind()\n");
-    exit(-1);
-  }
-
-  if (listen(serv_sock, 10) < 0)
-  {
-    fprintf(stderr, "listen()\n");
-    exit(-1);
-  }
-
-  printf("listening on %hu\n", port);
+  assert((sock = socket(AF_INET, SOCK_STREAM, 0)) > 0);
+  assert(bind(sock, (addr_t *)&serv_addr, sizeof(addr4_t)) == 0);
+  assert(listen(sock, 10) == 0);
+  printf("listening on port %d\n", PORT);
 
   for (;;)
   {
-    pthread_t thread;
-    int src_sock;
+    int src;
     addr4_t addr;
-    socklen_t addr_len = sizeof(addr4_t);
-    char addr_name[1024];
-
-    if ((src_sock = accept(serv_sock, (addr_t *)&addr, &addr_len)) < 0)
-    {
-      fprintf(stderr, "accept()\n");
-      // exit(-1);
-    }
-
-    if (inet_ntop(AF_INET, &addr.sin_addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
-    {
-      fprintf(stderr, "inet_ntop()\n");
-      // exit(-1);
-    }
-    printf("Connected to %s\n", addr_name);
-    pthread_create(&thread, NULL, handle, &src_sock);
+    socklen_t len = sizeof(addr4_t);
+    pthread_t thread;
+    if ((src = accept(sock, (addr_t *)&addr, &len)) > 0)
+      pthread_create(&thread, NULL, handle, &src);
   }
 
   return 0;
@@ -103,366 +50,124 @@ void *handle(void *arg)
 {
   int src_sock = *(int *)arg;
   int dst_sock;
-  if ((dst_sock = handshake(src_sock)) > 0)
-  {
-    loop(src_sock, dst_sock);
-    printf("LOOP EXIT\n");
-  }
+  ensure((dst_sock = handle_by_type(src_sock)) > 0, "handle_by_type()");
+  loop(src_sock, dst_sock);
+  return NULL;
+
+failure:
   close(src_sock);
   close(dst_sock);
   return NULL;
 }
 
-int handshake(int src_sock)
+int handle_by_type(int src)
 {
-  int dst_sock = -1;
   unsigned char ATYPE;
+  ensure(recv(src, &ATYPE, 1, 0) > 0, ">>ATYPE");
+
+  switch (ATYPE)
+  {
+  case 0x01:
+    return handle_ipv4(src);
+  case 0x04:
+    return handle_ipv6(src);
+  case 0x03:
+    return handle_hostname(src);
+  default:
+    return -1;
+  }
+
+failure:
+  return -1;
+}
+
+int handle_ipv4(int src)
+{
+  int dst = -1;
+  char DST_ADDR[4];
+  unsigned short DST_PORT;
+  addr4_t addr;
+  addr4_t bnd_addr;
+  socklen_t len = sizeof(addr4_t);
+
+  ensure(recv(src, &DST_ADDR, 4, 0) > 0, ">> DST_ADDR");
+  ensure(recv(src, &DST_PORT, 2, 0) > 0, ">> DST_PORT");
+  ensure((dst = socket(AF_INET, SOCK_STREAM, 0)) > 0, "ipv4 socket");
+
+  addr.sin_family = AF_INET;
+  addr.sin_addr = *(struct in_addr *)DST_ADDR;
+  addr.sin_port = DST_PORT;
+#if !defined(__linux__)
+  addr.sin_len = sizeof(addr4_t);
+#endif
+  ensure(!connect(dst, (addr_t *)&addr, sizeof(addr4_t)), "connect()");
+
+  ensure(!getsockname(dst, (addr_t *)&bnd_addr, &len), "getsockname()");
+  ensure(send(src, "\x01", 1, 0) > 0, "<< ATYPE");
+  ensure(send(src, &bnd_addr.sin_addr, 4, 0) > 0, "<< BND_ADDR");
+  ensure(send(src, &bnd_addr.sin_port, 2, 0) > 0, "<< BND_PORT");
+  return dst;
+
+failure:
+  close(dst);
+  return -1;
+}
+
+int handle_ipv6(int src)
+{
+  int dst = -1;
+  char DST_ADDR[16];
+  unsigned short DST_PORT;
+  addr6_t addr;
+  addr6_t bnd_addr;
+  socklen_t len = sizeof(addr6_t);
+
+  ensure(recv(src, &DST_ADDR, 16, 0) > 0, ">> DST_ADDR");
+  ensure(recv(src, &DST_PORT, 2, 0) > 0, ">> DST_PORT");
+  ensure((dst = socket(AF_INET, SOCK_STREAM, 0)) > 0, "socket()");
+
+  addr.sin6_family = AF_INET6;
+  addr.sin6_addr = *(struct in6_addr *)DST_ADDR;
+  addr.sin6_port = DST_PORT;
+#if !defined(__linux__)
+  addr.sin6_len = sizeof(addr6_t);
+#endif
+  ensure(!connect(dst, (addr_t *)&addr, sizeof(addr6_t)), "connect()");
+
+  ensure(!getsockname(dst, (addr_t *)&bnd_addr, &len), "getsockname()");
+  ensure(send(src, "\x04", 1, 0) > 0, "<< ATYPE");
+  ensure(send(src, &bnd_addr.sin6_addr, 16, 0) > 0, "<< BND_ADDR");
+  ensure(send(src, &bnd_addr.sin6_port, 2, 0) > 0, "<< BND_PORT");
+  return dst;
+
+failure:
+  close(dst);
+  return -1;
+}
+
+int handle_hostname(int src)
+{
+  int dst = -1;
   unsigned char ADDR_LEN;
   char DST_ADDR[1024] = {0};
   unsigned short DST_PORT;
+  char dst_port[8];
+  addr4_t bnd_addr;
+  socklen_t len = sizeof(addr4_t);
 
-  printf("HANDSHAKE\n");
+  ensure(recv(src, &ADDR_LEN, 1, 0) > 0, "<< ADDR_LEN");
+  ensure(recv(src, &DST_ADDR, ADDR_LEN, 0) > 0, "<< DST_ADDR");
+  ensure(recv(src, &DST_PORT, 2, 0) > 0, "<< DST_PORT");
+  sprintf(dst_port, "%hu", ntohs(DST_PORT));
+  ensure((dst = connect_by_hostname(DST_ADDR, dst_port)) > 0, "socket()");
 
-  if (recv(src_sock, &ATYPE, 1, 0) < 0)
-  {
-    fprintf(stderr, "handshake >> ATYPE\n");
-    return -1;
-  }
+  ensure(!getsockname(dst, (addr_t *)&bnd_addr, &len), "getsockname()");
+  ensure(send(src, "\x01", 1, 0) > 0, "<< ATYPE");
+  ensure(send(src, &bnd_addr.sin_addr, 4, 0) > 0, "<< BND_ADDR");
+  ensure(send(src, &bnd_addr.sin_port, 2, 0) > 0, "<< BND_PORT");
+  return dst;
 
-  switch (ATYPE)
-  {
-  case 0x01:
-    printf("IPv4\n");
-
-    if (recv(src_sock, &DST_ADDR, 4, 0) < 0)
-    {
-      fprintf(stderr, "handshake >> DST_ADDR\n");
-      return -1;
-    }
-
-    break;
-
-  case 0x04:
-    printf("IPv6\n");
-
-    if (recv(src_sock, &DST_ADDR, 16, 0) < 0)
-    {
-      fprintf(stderr, "handshake >> DST_ADDR\n");
-      return -1;
-    }
-    break;
-
-  case 0x03:
-    printf("DOMAIN NAME\n");
-
-    if (recv(src_sock, &ADDR_LEN, 1, 0) < 0)
-    {
-      fprintf(stderr, "handshake >> ADDR_LEN\n");
-      return -1;
-    }
-
-    if (recv(src_sock, &DST_ADDR, ADDR_LEN, 0) < 0)
-    {
-      fprintf(stderr, "handshake >> DST_ADDR\n");
-      return -1;
-    }
-    break;
-
-  default:
-    fprintf(stderr, "Invalid ATYPE (%d)\n", ATYPE);
-    return -1;
-  }
-
-  if (recv(src_sock, &DST_PORT, 2, 0) < 0)
-  {
-    fprintf(stderr, "handshake >> PORT\n");
-    return -1;
-  }
-
-  switch (ATYPE)
-  {
-  case 0x01:
-  {
-    addr4_t addr;
-
-    if ((dst_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-      fprintf(stderr, "handshake::socket()\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    addr.sin_family = AF_INET;
-#if !defined(__linux__)
-    addr.sin_len = sizeof(addr4_t);
-#endif
-    addr.sin_addr = *(struct in_addr *)DST_ADDR;
-    addr.sin_port = DST_PORT;
-
-    char name[1024];
-    printf("remote: %s:%hu\n", inet_ntop(AF_INET, &addr.sin_addr, name, sizeof(name)), ntohs(DST_PORT));
-
-    if (connect(dst_sock, (addr_t *)&addr, sizeof(addr4_t)) < 0)
-    {
-      fprintf(stderr, "handshake::connect()\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    break;
-  }
-
-  case 0x04:
-  {
-    addr6_t addr;
-
-    if ((dst_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-      fprintf(stderr, "handshake::socket()\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    addr.sin6_family = AF_INET6;
-#if !defined(__linux__)
-    addr.sin6_len = sizeof(addr6_t);
-#endif
-    addr.sin6_addr = *(struct in6_addr *)DST_ADDR;
-    addr.sin6_port = DST_PORT;
-
-    char name[1024];
-    printf("remote: %s:%hu\n", inet_ntop(AF_INET6, &addr.sin6_addr, name, sizeof(name)), ntohs(DST_PORT));
-
-    if (connect(dst_sock, (addr_t *)&addr, sizeof(addr6_t)) < 0)
-    {
-      fprintf(stderr, "handshake::connect(), %d\n", errno);
-      close(dst_sock);
-      return -1;
-    }
-
-    break;
-  }
-
-  case 0x03:
-  {
-    char PORT[16];
-    sprintf(PORT, "%hu", ntohs(DST_PORT));
-    printf("RESOLVE: %s:%s\n", DST_ADDR, PORT);
-    if ((dst_sock = connect_by_hostname(DST_ADDR, PORT)) < 0)
-    {
-      return -1;
-    }
-    ATYPE = 0x01;
-    break;
-  }
-  default:
-  {
-    fprintf(stderr, "Invalid ATYPE (%d)\n", ATYPE);
-    close(dst_sock);
-    return -1;
-  }
-  }
-
-  switch (ATYPE)
-  {
-  case 0x01:
-  {
-    addr4_t addr;
-    socklen_t len = sizeof(addr4_t);
-
-    printf("ITS HERE V4\n");
-    if (getsockname(dst_sock, (addr_t *)&addr, &len) < 0)
-    {
-      fprintf(stderr, "handshake::getsockname()\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    char name[1024];
-    printf("%s:%hu\n", inet_ntop(AF_INET, &addr.sin_addr, name, sizeof(name)), addr.sin_port);
-
-    if (send(src_sock, "\x01", 1, 0) < 0)
-    {
-      fprintf(stderr, "handshake << ATYPE\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    if (send(src_sock, &addr.sin_addr, 4, 0) < 0)
-    {
-      fprintf(stderr, "handshake << BND_ADDR\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    if (send(src_sock, &addr.sin_port, 2, 0) < 0)
-    {
-      fprintf(stderr, "handshake << BND_PORT\n");
-      close(dst_sock);
-      return -1;
-    }
-    break;
-  }
-
-  case 0x04:
-  {
-    addr6_t addr;
-    socklen_t len = sizeof(addr6_t);
-    printf("ITS HERE V6\n");
-
-    if (getsockname(dst_sock, (addr_t *)&addr, &len) < 0)
-    {
-      fprintf(stderr, "handshake::getsockname()\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    char name[1024];
-    printf("%s:%hu\n", inet_ntop(AF_INET6, &addr.sin6_addr, name, sizeof(name)), addr.sin6_port);
-
-    if (send(src_sock, "\x04", 1, 0) < 0)
-    {
-      fprintf(stderr, "handshake << ATYPE\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    if (send(src_sock, &addr.sin6_addr, 16, 0) < 0)
-    {
-      fprintf(stderr, "handshake << BND_ADDR\n");
-      close(dst_sock);
-      return -1;
-    }
-
-    if (send(src_sock, &addr.sin6_port, 2, 0) < 0)
-    {
-      fprintf(stderr, "handshake << BND_PORT\n");
-      close(dst_sock);
-      return -1;
-    }
-    break;
-  }
-  default:
-  {
-    fprintf(stderr, "Invalid ATYPE (%d)\n", ATYPE);
-    close(dst_sock);
-    return -1;
-  }
-  }
-  return dst_sock;
-}
-
-void loop(int sock1, int sock2)
-{
-  printf("%d, %d\n", sock1, sock2);
-  pollfd_t fds[2];
-  int socks[2] = {sock1, sock2};
-  char buf[4096];
-  ssize_t size;
-
-  fds[0].fd = sock1;
-  fds[0].events = POLLIN;
-  fds[1].fd = sock2;
-  fds[1].events = POLLIN;
-
-  for (;;)
-  {
-    int res = poll((pollfd_t *)&fds, 2, 10000);
-
-    if (res < 0)
-    {
-      fprintf(stderr, "loop::poll()\n");
-      return;
-    }
-
-    // if (res == 0)
-    // {
-    //   printf("TIMEOUT, LOOP EXIT\n");
-    //   return;
-    // }
-
-    for (int i = 0; i < 2; i++)
-    {
-      if (fds[i].revents)
-      {
-        if (fds[i].revents & POLLIN)
-        {
-          size = recv(socks[i], &buf, sizeof(buf), 0);
-          if (size < 0)
-          {
-            fprintf(stderr, "loop::recv()\n");
-            return;
-          }
-
-          // write(1, &buf, size);
-
-          if ((size = send(socks[i ^ 1], &buf, size, MSG_NOSIGNAL)) < 0)
-          {
-            fprintf(stderr, "loop::send()\n");
-            return;
-          }
-
-          // if (size == 0)
-          // {
-          //   printf("FINISHED, LOOP EXIT\n");
-          //   return;
-          // }
-        }
-        else
-        {
-          printf("CLOSED, LOOP EXIT\n");
-          return;
-        }
-      }
-    }
-  }
-}
-
-int connect_by_hostname(char *host, char *port)
-{
-  int sock;
-  addrinfo_t hints;
-  addrinfo_t *res;
-  addrinfo_t *cur;
-
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_STREAM;
-
-  if (getaddrinfo(host, port, &hints, &res) != 0)
-  {
-    fprintf(stderr, "handshake::getaddrinfo()\n");
-    return -1;
-  }
-
-  for (cur = res; cur != NULL; cur = cur->ai_next)
-  {
-    if ((sock = socket(cur->ai_family, cur->ai_socktype, cur->ai_protocol)) < 0)
-      continue;
-    if (connect(sock, cur->ai_addr, cur->ai_addrlen) == 0)
-    {
-      printf("SUCCESS\n");
-      break;
-    }
-    printf("NOT BREAK\n");
-    close(sock);
-  }
-
-  if (cur == NULL)
-  {
-    fprintf(stderr, "handshake::RESOLVE\n");
-    return -1;
-  }
-
-  if (cur->ai_family != AF_INET)
-  {
-    fprintf(stderr, "handshake::cur->ai_family (%d)\n", cur->ai_family);
-    return -1;
-  }
-
-  char name[1024];
-  inet_ntop(AF_INET, &((addr4_t *)cur->ai_addr)->sin_addr, (char *)&name, sizeof(name));
-  printf("remote: %s:%hu\n", name, ntohs(((addr4_t *)cur->ai_addr)->sin_port));
-  freeaddrinfo(res);
-  return sock;
+failure:
+  close(dst);
+  return -1;
 }
