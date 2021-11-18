@@ -444,7 +444,7 @@ void loop(int sock1, int sock2)
 
           // write(1, &buf, size);
 
-          if ((size = send(socks[i ^ 1], &buf, size, 0)) < 0)
+          if ((size = send(socks[i ^ 1], &buf, size, MSG_NOSIGNAL)) < 0)
           {
             fprintf(stderr, "loop::send()\n");
             return;
@@ -480,7 +480,7 @@ int connect_by_hostname(char *host, char *port)
   if (getaddrinfo(host, port, &hints, &res) != 0)
   {
     fprintf(stderr, "handshake::getaddrinfo()\n");
-    exit(-1);
+    return -1;
   }
 
   for (cur = res; cur != NULL; cur = cur->ai_next)
