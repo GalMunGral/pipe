@@ -86,13 +86,13 @@ int main(int argc, char **argv)
     if ((src_sock = accept(serv_sock, (addr_t *)&addr, &addr_len)) < 0)
     {
       fprintf(stderr, "accept()\n");
-      exit(-1);
+      // exit(-1);
     }
 
     if (inet_ntop(AF_INET, &addr.sin_addr, (char *)&addr_name, sizeof(addr_name)) == NULL)
     {
       fprintf(stderr, "inet_ntop()\n");
-      exit(-1);
+      // exit(-1);
     }
     printf("Connected to %s\n", addr_name);
     pthread_create(&thread, NULL, handle, &src_sock);
@@ -415,7 +415,7 @@ void loop(int sock1, int sock2)
 
   for (;;)
   {
-    int res = poll((pollfd_t *)&fds, 2, 2000);
+    int res = poll((pollfd_t *)&fds, 2, 200);
 
     if (res < 0)
     {
