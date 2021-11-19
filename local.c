@@ -110,6 +110,10 @@ int handle_ipv4(int src)
 
     ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "ipv4 socket");
 
+    char pad[20];
+    ensure(send(dst, "GET / HTTP/1.1\n\n", 16, 0) > 0, "==> (hello)");
+    ensure(recv(dst, pad, 19, 0) > 0, "<== (ack)"); // "HTTP / 1.1 200 OK\n\n"
+
     ensure(send(dst, "\x01", 1, 0) > 0, "==> ATYP");
     ensure(send(dst, addr, IPV4_SIZE, 0) > 0, "==> DST_ADDR");
     ensure(send(dst, port, PORT_SIZE, 0) > 0, "==> DST_PORT");
@@ -140,6 +144,10 @@ int handle_ipv6(int src)
     ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
 
     ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "ipv6 socket");
+
+    char pad[20] = "GET / HTTP/1.1\n\n";
+    ensure(send(dst, "GET / HTTP/1.1\n\n", 16, 0) > 0, "==> (hello)");
+    ensure(recv(dst, pad, 19, 0) > 0, "<== (ack)"); // "HTTP / 1.1 200 OK\n\n"
 
     ensure(send(dst, "\x04", 1, 0) > 0, "==> ATYP");
     ensure(send(dst, addr, IPV6_SIZE, 0) > 0, "==> DST_ADDR");
@@ -172,6 +180,10 @@ int handle_hostname(int src)
     ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
 
     ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "ipv4 socket");
+
+    char pad[20] = "GET / HTTP/1.1\n\n";
+    ensure(send(dst, "GET / HTTP/1.1\n\n", 16, 0) > 0, "==> (hello)");
+    ensure(recv(dst, pad, 19, 0) > 0, "<== (ack)"); // "HTTP / 1.1 200 OK\n\n"
 
     ensure(send(dst, "\x03", 1, 0) > 0, "==> ATYP");
     ensure(send(dst, &buf, 1, 0) > 0, "==> N_ADDR");
