@@ -60,9 +60,9 @@ void *handle(void *arg)
 
 int handle_by_type(int src)
 {
-    char pad[16];
-    ensure(recv(src, pad, 16, 0) > 0, "==> (hello)"); // "GET / HTTP/1.1\n\n"
-    ensure(send(src, "HTTP / 1.1 200 OK\n\n", 19, 0) > 0, "<== (ack)");
+    char pad[8];
+    ensure(recv(src, pad, 8, 0) > 0, "==> (pad)");
+    ensure(send(src, pad, 8, 0) > 0, "<== (pad)");
 
     unsigned char atyp;
     ensure(recv(src, &atyp, 1, 0) > 0, ">>ATYP");
