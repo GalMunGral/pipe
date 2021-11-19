@@ -12,7 +12,6 @@ short port;
 
 void cleanup()
 {
-  printf("BYE-BYE!\n");
   close(sock);
 }
 
@@ -56,7 +55,6 @@ void *handle(void *arg)
     loop(pair);
   close(pair[0]);
   close(pair[1]);
-  printf("close\n");
   return NULL;
 }
 
@@ -68,10 +66,8 @@ int handle_by_type(int src)
   switch (atyp)
   {
   case 1:
-    printf("ipv4\n");
     return handle_ipv4(src);
   case 4:
-    printf("ipv6\n");
     return handle_ipv6(src);
   case 3:
     return handle_hostname(src);
@@ -94,10 +90,6 @@ int handle_ipv4(int src)
   addr.sin_family = AF_INET;
   ensure(recv(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "==> DST_ADDR");
   ensure(recv(src, &addr.sin_port, PORT_SIZE, 0) > 0, "==> DST_PORT");
-
-  char name[256];
-  inet_ntop(AF_INET, &addr.sin_addr, (char *)&name, sizeof(name));
-  printf("remote: %s::%hu\n", name, ntohs(addr.sin_port));
 
   socklen_t len = sizeof(addr4_t);
   ensure((dst = socket(AF_INET, SOCK_STREAM, 0)) > 0, "ipv4 socket");
@@ -125,10 +117,6 @@ int handle_ipv6(int src)
   addr.sin6_family = AF_INET6;
   ensure(recv(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "==> DST_ADDR");
   ensure(recv(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "==> DST_PORT");
-
-  char name[256];
-  inet_ntop(AF_INET6, &addr.sin6_addr, (char *)&name, sizeof(name));
-  printf("remote: %s::%hu\n", name, ntohs(addr.sin6_port));
 
   socklen_t len = sizeof(addr6_t);
   ensure((dst = socket(AF_INET6, SOCK_STREAM, 0)) > 0, "ipv6 socket");

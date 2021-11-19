@@ -13,7 +13,6 @@ char *remote_port;
 
 void cleanup()
 {
-  printf("BYE-BYE!\n");
   close(sock);
 }
 
@@ -58,7 +57,6 @@ void *handle(void *arg)
     loop(pair);
   close(pair[0]);
   close(pair[1]);
-  printf("close\n");
   return NULL;
 }
 
@@ -86,10 +84,8 @@ int handle_by_type(int src)
   switch (buf)
   {
   case 1:
-    printf("ipv4\n");
     return handle_ipv4(src);
   case 4:
-    printf("ipv6\n");
     return handle_ipv6(src);
   case 3:
     return handle_hostname(src);
