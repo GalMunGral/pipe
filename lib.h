@@ -25,7 +25,7 @@ int loop(int[2]);
 #define IPV4_SIZE 4
 #define IPV6_SIZE 16
 
-#define LOOP_POLL_TIMEOUT 5000
+#define LOOP_POLL_TIMEOUT 10000
 #define EXIT_SHUTDOWN 0
 #define EXIT_POLL_ERR 1
 #define EXIT_POLL_TIMEOUT 2

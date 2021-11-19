@@ -44,8 +44,8 @@ int loop(int pair[2])
         int res = poll((pollfd_t *)&fds, 2, LOOP_POLL_TIMEOUT);
         if (res == -1)
             return EXIT_POLL_ERR;
-        if (res == 0)
-            return EXIT_POLL_TIMEOUT;
+        // if (res == 0)
+        //     return EXIT_POLL_TIMEOUT;
 
         for (int i = 0; i < 2; i++)
         {
