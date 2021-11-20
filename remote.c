@@ -50,22 +50,30 @@ int main(int argc, char **argv)
 
 void *handle(void *arg)
 {
-    int pair[2] = {*(int *)arg, -1};
-    if ((pair[1] = handle_by_type(pair[0])) > 0)
-        loop(pair);
+    int pair[2] = {-1, -1};
+    ensure((pair[0] = *(int *)arg) > 0, "socket(local)");
+
+    char pad[PAD_SIZE];
+    ensure(recv(pair[0], pad, PAD_SIZE, 0) > 0, "[local] --> (pad)");
+    ensure(send(pair[0], pad, PAD_SIZE, 0) > 0, "[local] <-- (pad)");
+
+    ensure((pair[1] = handle_by_type(pair[0])) > 0, "failed to establish connection");
+
+    loop(pair);
+
+error:
     close(pair[0]);
     close(pair[1]);
     return NULL;
 }
 
+/**
+ * Returns the newly created socket (connected to the final destination)
+ */
 int handle_by_type(int src)
 {
-    char pad[8];
-    ensure(recv(src, pad, 8, 0) > 0, "==> (pad)");
-    ensure(send(src, pad, 8, 0) > 0, "<== (pad)");
-
     unsigned char atyp;
-    ensure(recv(src, &atyp, 1, 0) > 0, ">>ATYP");
+    ensure(recv(src, &atyp, 1, 0) > 0, "[local] --> ATYP");
 
     switch (atyp)
     {
@@ -92,17 +100,17 @@ int handle_ipv4(int src)
     addr.sin_len = sizeof(addr4_t);
 #endif
     addr.sin_family = AF_INET;
-    ensure(recv(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "==> DST_ADDR");
-    ensure(recv(src, &addr.sin_port, PORT_SIZE, 0) > 0, "==> DST_PORT");
+    ensure(recv(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] --> DST_ADDR");
+    ensure(recv(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
 
     socklen_t len = sizeof(addr4_t);
     ensure((dst = socket(AF_INET, SOCK_STREAM, 0)) > 0, "ipv4 socket");
     ensure(connect(dst, (addr_t *)&addr, sizeof(addr4_t)) == 0, "connect()");
     ensure(getsockname(dst, (addr_t *)&addr, &len) == 0, "getsockname()");
 
-    ensure(send(src, "\x01", 1, 0) > 0, "<== ATYP");
-    ensure(send(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "<== BND_ADDR");
-    ensure(send(src, &addr.sin_port, PORT_SIZE, 0) > 0, "<== BND_PORT");
+    ensure(send(src, "\x01", 1, 0) > 0, "[local] <-- ATYP");
+    ensure(send(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] <-- BND_ADDR");
+    ensure(send(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
     return dst;
 
 error:
@@ -119,17 +127,17 @@ int handle_ipv6(int src)
     addr.sin6_len = sizeof(addr6_t);
 #endif
     addr.sin6_family = AF_INET6;
-    ensure(recv(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "==> DST_ADDR");
-    ensure(recv(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "==> DST_PORT");
+    ensure(recv(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "[local] --> DST_ADDR");
+    ensure(recv(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
 
     socklen_t len = sizeof(addr6_t);
     ensure((dst = socket(AF_INET6, SOCK_STREAM, 0)) > 0, "ipv6 socket");
     ensure(connect(dst, (addr_t *)&addr, sizeof(addr6_t)) == 0, "connect()");
     ensure(getsockname(dst, (addr_t *)&addr, &len) == 0, "getsockname()");
 
-    ensure(send(src, "\x04", 1, 0) > 0, "<== ATYP");
-    ensure(send(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "<== BND_ADDR");
-    ensure(send(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "<== BND_PORT");
+    ensure(send(src, "\x04", 1, 0) > 0, "[local] <-- ATYP");
+    ensure(send(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "[local] <-- BND_ADDR");
+    ensure(send(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
     return dst;
 
 error:
@@ -144,9 +152,9 @@ int handle_hostname(int src)
     unsigned char n_addr;
     char name[256] = {};
     char port[8] = {};
-    ensure(recv(src, &n_addr, 1, 0) > 0, "==> N_ADDR");
-    ensure(recv(src, name, n_addr, 0) > 0, "==> DST_ADDR");
-    ensure(recv(src, port, PORT_SIZE, 0) > 0, "==> DST_PORT");
+    ensure(recv(src, &n_addr, 1, 0) > 0, "[local] --> N_ADDR");
+    ensure(recv(src, name, n_addr, 0) > 0, "[local] --> DST_ADDR");
+    ensure(recv(src, port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
     sprintf(port, "%hu", ntohs(*(unsigned short *)port));
 
     addr4_t addr;
@@ -155,8 +163,8 @@ int handle_hostname(int src)
     ensure(getsockname(dst, (addr_t *)&addr, &len) == 0, "getsockname()");
 
     ensure(send(src, "\x01", 1, 0) > 0, "<== ATYP");
-    ensure(send(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "<== BND_ADDR");
-    ensure(send(src, &addr.sin_port, PORT_SIZE, 0) > 0, "<== BND_PORT");
+    ensure(send(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] <-- BND_ADDR");
+    ensure(send(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
     return dst;
 
 error:

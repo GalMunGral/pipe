@@ -1,10 +1,10 @@
 #include "lib.h"
 
 void *handle(void *);
-int handle_by_type(int);
-int handle_ipv4(int);
-int handle_ipv6(int);
-int handle_hostname(int);
+int handle_by_type(int, int);
+int handle_ipv4(int, int);
+int handle_ipv6(int, int);
+int handle_hostname(int, int);
 
 int sock;
 short port;
@@ -52,15 +52,28 @@ int main(int argc, char **argv)
 
 void *handle(void *arg)
 {
-    int pair[2] = {*(int *)arg, -1};
-    if ((pair[1] = handle_by_type(pair[0])) > 0)
-        loop(pair);
+    int pair[2] = {-1, -1};
+    ensure((pair[0] = *(int *)arg) > 0, "socket(local)");
+    ensure((pair[1] = connect_by_name(remote_addr, remote_port)) > 0, "socket(remote)");
+
+    char pad[PAD_SIZE]; // naive handshake
+    ensure(send(pair[1], pad, PAD_SIZE, 0) > 0, "(pad) --> [remote]");
+    ensure(recv(pair[1], pad, PAD_SIZE, 0) > 0, "(pad) <-- [remote]");
+
+    ensure((handle_by_type(pair[0], pair[1]) == 0), "failed to establish connection");
+
+    loop(pair);
+
+error:
     close(pair[0]);
     close(pair[1]);
     return NULL;
 }
 
-int handle_by_type(int src)
+/**
+ * Returns 0 for success and -1 for error
+ */
+int handle_by_type(int src, int dst)
 {
     unsigned char buf;
     char methods[256];
@@ -75,32 +88,24 @@ int handle_by_type(int src)
     ensure(recv(src, &buf, 1, 0) > 0 && buf == 5, ">> VER");
     ensure(recv(src, &buf, 1, 0) > 0 && buf == 1, ">> CMD");
     ensure(recv(src, &buf, 1, 0) > 0 && buf == 0, ">> RSV");
-    ensure(recv(src, &buf, 1, 0) > 0, ">> ATYP");
-
-    ensure(send(src, "\x05", 1, 0) > 0, "<< VER");
-    ensure(send(src, "\x00", 1, 0) > 0, "<< ACK");
-    ensure(send(src, "\x00", 1, 0) > 0, "<< RSV");
+    ensure(recv(src, &buf, 1, 0) > 0 && (buf == 1 || buf == 3 || buf == 4), ">> ATYP");
 
     switch (buf)
     {
     case 1:
-        return handle_ipv4(src);
+        return handle_ipv4(src, dst);
     case 4:
-        return handle_ipv6(src);
+        return handle_ipv6(src, dst);
     case 3:
-        return handle_hostname(src);
-    default:
-        return -1;
+        return handle_hostname(src, dst);
     }
 
 error:
     return -1;
 }
 
-int handle_ipv4(int src)
+int handle_ipv4(int src, int dst)
 {
-    int dst = -1;
-
     char buf;
     char addr[IPV4_SIZE];
     char port[PORT_SIZE];
@@ -108,34 +113,25 @@ int handle_ipv4(int src)
     ensure(recv(src, addr, IPV4_SIZE, 0) > 0, ">> DST_ADDR");
     ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
 
-    ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "ipv4 socket");
+    ensure(send(dst, "\x01", 1, 0) > 0, "ATYP --> [remote]");
+    ensure(send(dst, addr, IPV4_SIZE, 0) > 0, "DST_ADDR --> [remote]");
+    ensure(send(dst, port, PORT_SIZE, 0) > 0, "DST_PORT --> [remote]");
 
-    char pad[8];
-    ensure(send(dst, pad, 8, 0) > 0, "==> (pad)");
-    ensure(recv(dst, pad, 8, 0) > 0, "<== (pad)");
+    ensure(recv(dst, &buf, 1, 0) > 0, "ATYP <-- [remote]");
+    ensure(recv(dst, addr, IPV4_SIZE, 0) > 0, "BND_ADDR <-- [remote]");
+    ensure(recv(dst, port, PORT_SIZE, 0) > 0, "BND_PORT <-- [remote]");
 
-    ensure(send(dst, "\x01", 1, 0) > 0, "==> ATYP");
-    ensure(send(dst, addr, IPV4_SIZE, 0) > 0, "==> DST_ADDR");
-    ensure(send(dst, port, PORT_SIZE, 0) > 0, "==> DST_PORT");
-
-    ensure(recv(dst, &buf, 1, 0) > 0, "<== ATYP");
-    ensure(recv(dst, addr, IPV4_SIZE, 0) > 0, "<== BND_ADDR");
-    ensure(recv(dst, port, PORT_SIZE, 0) > 0, "<== BND_PORT");
-
-    ensure(send(src, "\x01", 1, 0) > 0, "<< ATYP");
+    ensure(send(src, "\x05\x00\x00\x01", 4, 0) > 0, "<< VER|ACK|RSV|ATYP");
     ensure(send(src, addr, IPV4_SIZE, 0) > 0, "<< BND_ADDR");
     ensure(send(src, port, PORT_SIZE, 0) > 0, "<< BND_PORT");
-    return dst;
+    return 0;
 
 error:
-    close(dst);
     return -1;
 }
 
-int handle_ipv6(int src)
+int handle_ipv6(int src, int dst)
 {
-    int dst = -1;
-
     char buf;
     char addr[IPV6_SIZE];
     char port[PORT_SIZE];
@@ -143,34 +139,25 @@ int handle_ipv6(int src)
     ensure(recv(src, addr, IPV6_SIZE, 0) > 0, ">> DST_ADDR");
     ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
 
-    ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "ipv6 socket");
+    ensure(send(dst, "\x04", 1, 0) > 0, "ATYP --> [remote]");
+    ensure(send(dst, addr, IPV6_SIZE, 0) > 0, "DST_ADDR --> [remote]");
+    ensure(send(dst, port, PORT_SIZE, 0) > 0, "DST_PORT --> [remote]");
 
-    char pad[8];
-    ensure(send(dst, pad, 8, 0) > 0, "==> (pad)");
-    ensure(recv(dst, pad, 8, 0) > 0, "<== (pad)");
+    ensure(recv(dst, &buf, 1, 0) > 0, "ATYP <-- [remote]");
+    ensure(recv(dst, addr, IPV6_SIZE, 0) > 0, "BND_ADDR <-- [remote]");
+    ensure(recv(dst, port, PORT_SIZE, 0) > 0, "BND_PORT <-- [remote]");
 
-    ensure(send(dst, "\x04", 1, 0) > 0, "==> ATYP");
-    ensure(send(dst, addr, IPV6_SIZE, 0) > 0, "==> DST_ADDR");
-    ensure(send(dst, port, PORT_SIZE, 0) > 0, "==> DST_PORT");
-
-    ensure(recv(dst, &buf, 1, 0) > 0, "<== ATYP");
-    ensure(recv(dst, addr, IPV6_SIZE, 0) > 0, "<== BND_ADDR");
-    ensure(recv(dst, port, PORT_SIZE, 0) > 0, "<== BND_PORT");
-
-    ensure(send(src, "\x04", 1, 0) > 0, "<< ATYP");
+    ensure(send(src, "\x05\x00\x00\x04", 4, 0) > 0, "<< VER|ACK|RSV|ATYP");
     ensure(send(src, addr, IPV6_SIZE, 0) > 0, "<< BND_ADDR");
     ensure(send(src, port, PORT_SIZE, 0) > 0, "<< BND_PORT");
-    return dst;
+    return 0;
 
 error:
-    close(dst);
     return -1;
 }
 
-int handle_hostname(int src)
+int handle_hostname(int src, int dst)
 {
-    int dst = -1;
-
     unsigned char buf;
     char addr[256] = {};
     char port[PORT_SIZE];
@@ -179,27 +166,20 @@ int handle_hostname(int src)
     ensure(recv(src, addr, buf, 0) > 0, ">> DST_ADDR");
     ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
 
-    ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "ipv4 socket");
+    ensure(send(dst, "\x03", 1, 0) > 0, "ATYP --> [remote]");
+    ensure(send(dst, &buf, 1, 0) > 0, "N_ADDR --> [remote]");
+    ensure(send(dst, addr, buf, 0) > 0, "DST_ADDR --> [remote]");
+    ensure(send(dst, port, PORT_SIZE, 0) > 0, "DST_PORT --> [remote]");
 
-    char pad[8];
-    ensure(send(dst, pad, 8, 0) > 0, "==> (pad)");
-    ensure(recv(dst, pad, 8, 0) > 0, "<== (pad)");
+    ensure(recv(dst, &buf, 1, 0) > 0, "ATYP(v4) <-- [remote]");
+    ensure(recv(dst, addr, IPV4_SIZE, 0) > 0, "BND_ADDR(v4) <-- [remote]");
+    ensure(recv(dst, port, PORT_SIZE, 0) > 0, "BND_PORT <-- [remote]");
 
-    ensure(send(dst, "\x03", 1, 0) > 0, "==> ATYP");
-    ensure(send(dst, &buf, 1, 0) > 0, "==> N_ADDR");
-    ensure(send(dst, addr, buf, 0) > 0, "==> DST_ADDR");
-    ensure(send(dst, port, PORT_SIZE, 0) > 0, "==> DST_PORT");
-
-    ensure(recv(dst, &buf, 1, 0) > 0, "<== ATYP (v4)");
-    ensure(recv(dst, addr, IPV4_SIZE, 0) > 0, "<== BND_ADDR (v4)");
-    ensure(recv(dst, port, PORT_SIZE, 0) > 0, "<== BND_PORT");
-
-    ensure(send(src, "\x01", 1, 0) > 0, "<< ATYP");
+    ensure(send(src, "\x05\x00\x00\x01", 4, 0) > 0, "<< VER|ACK|RSV|ATYP(v4)");
     ensure(send(src, addr, IPV4_SIZE, 0) > 0, "<< BND_ADDR");
     ensure(send(src, port, PORT_SIZE, 0) > 0, "<< BND_PORT");
-    return dst;
+    return 0;
 
 error:
-    close(dst);
     return -1;
 }
