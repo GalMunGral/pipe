@@ -6,4 +6,3 @@ ExecStart=/root/telescope/remote 3030
 
 [Install]
 WantedBy=multi-user.target
-
