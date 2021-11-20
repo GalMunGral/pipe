@@ -53,7 +53,7 @@ void *handle(void *arg)
     ensure((pair[0] = *(int *)arg) > 0, "socket(local)");
 
     char pad[PAD_SIZE];
-    ensure(recv(pair[0], pad, PAD_SIZE, 0) > 0, "[local] --> (pad)");
+    ensure(recvall(pair[0], pad, PAD_SIZE, 0) > 0, "[local] --> (pad)");
     ensure(send(pair[0], pad, PAD_SIZE, 0) > 0, "[local] <-- (pad)");
 
     ensure((pair[1] = handle_by_type(pair[0])) > 0, "failed to establish connection");
@@ -72,15 +72,15 @@ error:
 int handle_by_type(int src)
 {
     unsigned char atyp;
-    ensure(recv(src, &atyp, 1, 0) > 0, "[local] --> ATYP");
+    ensure(recvall(src, &atyp, 1, 0) > 0, "[local] --> ATYP");
 
     switch (atyp)
     {
-    case 1:
+    case '\x01':
         return handle_ipv4(src);
-    case 4:
+    case '\x04':
         return handle_ipv6(src);
-    case 3:
+    case '\x03':
         return handle_hostname(src);
     default:
         return -1;
@@ -99,8 +99,8 @@ int handle_ipv4(int src)
     addr.sin_len = sizeof(addr4_t);
 #endif
     addr.sin_family = AF_INET;
-    ensure(recv(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] --> DST_ADDR");
-    ensure(recv(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
+    ensure(recvall(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] --> DST_ADDR");
+    ensure(recvall(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
 
     socklen_t len = sizeof(addr4_t);
     ensure((dst = socket(AF_INET, SOCK_STREAM, 0)) > 0, "ipv4 socket");
@@ -126,8 +126,8 @@ int handle_ipv6(int src)
     addr.sin6_len = sizeof(addr6_t);
 #endif
     addr.sin6_family = AF_INET6;
-    ensure(recv(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "[local] --> DST_ADDR");
-    ensure(recv(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
+    ensure(recvall(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "[local] --> DST_ADDR");
+    ensure(recvall(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
 
     socklen_t len = sizeof(addr6_t);
     ensure((dst = socket(AF_INET6, SOCK_STREAM, 0)) > 0, "ipv6 socket");
@@ -151,9 +151,9 @@ int handle_hostname(int src)
     unsigned char n_addr;
     char name[256] = {};
     char port[8] = {};
-    ensure(recv(src, &n_addr, 1, 0) > 0, "[local] --> N_ADDR");
-    ensure(recv(src, name, n_addr, 0) > 0, "[local] --> DST_ADDR");
-    ensure(recv(src, port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
+    ensure(recvall(src, &n_addr, 1, 0) > 0, "[local] --> N_ADDR");
+    ensure(recvall(src, name, n_addr, 0) > 0, "[local] --> DST_ADDR");
+    ensure(recvall(src, port, PORT_SIZE, 0) > 0, "[local] --> DST_PORT");
     sprintf(port, "%hu", ntohs(*(unsigned short *)port));
 
     addr4_t addr;

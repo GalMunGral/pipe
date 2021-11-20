@@ -1,5 +1,18 @@
 #include "lib.h"
 
+ssize_t recvall(int sockfd, void *buf, size_t len, int flags)
+{
+    size_t rem = len;
+    while (rem)
+    {
+        ssize_t size;
+        if ((size = recv(sockfd, buf, rem, flags)) <= 0)
+            return size;
+        rem -= size;
+    }
+    return len;
+}
+
 int connect_by_name(char *name, char *port)
 {
     int sock = -1;
@@ -47,7 +60,7 @@ int loop(int pair[2])
 
         for (int i = 0; i < 2; i++)
         {
-            char buf[4096];
+            char buf[LOOP_BUFFER_SIZE];
             if (fds[i].revents & POLLIN)
             {
                 ssize_t size = recv(pair[i], buf, sizeof(buf), 0);

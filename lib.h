@@ -18,6 +18,8 @@ typedef struct sockaddr_in6 addr6_t;
 typedef struct pollfd pollfd_t;
 typedef struct addrinfo addrinfo_t;
 
+ssize_t recvall(int, void *, size_t, int);
+
 int connect_by_name(char *, char *);
 int loop(int[2]);
 
@@ -25,7 +27,9 @@ int loop(int[2]);
 #define IPV4_SIZE 4
 #define IPV6_SIZE 16
 
+#define LOOP_BUFFER_SIZE 8192
 #define LOOP_POLL_TIMEOUT 5000
+
 #define EXIT_SHUTDOWN 0
 #define EXIT_POLL_ERR 1
 #define EXIT_POLL_TIMEOUT 2
