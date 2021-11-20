@@ -57,7 +57,6 @@ void *handle(void *arg)
     ensure(sendall(pair[0], pad, PAD_SIZE, 0) > 0, "[local] <-- (pad)");
 
     ensure((pair[1] = handle_by_type(pair[0])) > 0, "aborted");
-
     loop(pair);
 
 error:

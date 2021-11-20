@@ -70,8 +70,7 @@ void *handle(void *arg)
     ensure(sendall(pair[0], "\x05\x00", 2, 0) > 0, "VER|METHOD (failed)");
 
     // 2. THE ACTUAL REQUEST
-    ensure((handle_by_type(pair[0], pair[1]) == 0), "failed to establish connection");
-
+    ensure((handle_by_type(pair[0], pair[1]) == 0), NULL);
     loop(pair);
 
 error:
