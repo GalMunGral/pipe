@@ -1,5 +1,6 @@
 #!/usr/bin/sh
-
+make clean
+make
 cp telescope.service /etc/systemd/system
 systemctl daemon-reload
 systemctl restart telescope
