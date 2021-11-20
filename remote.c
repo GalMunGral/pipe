@@ -54,7 +54,7 @@ void *handle(void *arg)
 
     char pad[PAD_SIZE];
     ensure(recvall(pair[0], pad, PAD_SIZE, 0) > 0, "[local] --> (pad)");
-    ensure(send(pair[0], pad, PAD_SIZE, 0) > 0, "[local] <-- (pad)");
+    ensure(sendall(pair[0], pad, PAD_SIZE, 0) > 0, "[local] <-- (pad)");
 
     ensure((pair[1] = handle_by_type(pair[0])) > 0, "failed to establish connection");
 
@@ -107,9 +107,9 @@ int handle_ipv4(int src)
     ensure(connect(dst, (addr_t *)&addr, sizeof(addr4_t)) == 0, "connect()");
     ensure(getsockname(dst, (addr_t *)&addr, &len) == 0, "getsockname()");
 
-    ensure(send(src, "\x01", 1, 0) > 0, "[local] <-- ATYP");
-    ensure(send(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] <-- BND_ADDR");
-    ensure(send(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
+    ensure(sendall(src, "\x01", 1, 0) > 0, "[local] <-- ATYP");
+    ensure(sendall(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] <-- BND_ADDR");
+    ensure(sendall(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
     return dst;
 
 error:
@@ -134,9 +134,9 @@ int handle_ipv6(int src)
     ensure(connect(dst, (addr_t *)&addr, sizeof(addr6_t)) == 0, "connect()");
     ensure(getsockname(dst, (addr_t *)&addr, &len) == 0, "getsockname()");
 
-    ensure(send(src, "\x04", 1, 0) > 0, "[local] <-- ATYP");
-    ensure(send(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "[local] <-- BND_ADDR");
-    ensure(send(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
+    ensure(sendall(src, "\x04", 1, 0) > 0, "[local] <-- ATYP");
+    ensure(sendall(src, &addr.sin6_addr, IPV6_SIZE, 0) > 0, "[local] <-- BND_ADDR");
+    ensure(sendall(src, &addr.sin6_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
     return dst;
 
 error:
@@ -161,9 +161,9 @@ int handle_hostname(int src)
     ensure((dst = connect_by_name(name, port)) > 0, "ipv4 socket()");
     ensure(getsockname(dst, (addr_t *)&addr, &len) == 0, "getsockname()");
 
-    ensure(send(src, "\x01", 1, 0) > 0, "<== ATYP");
-    ensure(send(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] <-- BND_ADDR");
-    ensure(send(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
+    ensure(sendall(src, "\x01", 1, 0) > 0, "<== ATYP");
+    ensure(sendall(src, &addr.sin_addr, IPV4_SIZE, 0) > 0, "[local] <-- BND_ADDR");
+    ensure(sendall(src, &addr.sin_port, PORT_SIZE, 0) > 0, "[local] <-- BND_PORT");
     return dst;
 
 error:
