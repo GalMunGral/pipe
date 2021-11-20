@@ -19,6 +19,7 @@ typedef struct pollfd pollfd_t;
 typedef struct addrinfo addrinfo_t;
 
 ssize_t recvall(int, void *, size_t, int);
+ssize_t sendall(int, void *, size_t, int);
 
 int connect_by_name(char *, char *);
 int loop(int[2]);
