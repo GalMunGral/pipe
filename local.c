@@ -110,8 +110,8 @@ int handle_ipv4(int src, int dst)
     char addr[IPV4_SIZE];
     char port[PORT_SIZE];
 
-    ensure(recv(src, addr, IPV4_SIZE, 0) > 0, ">> DST_ADDR");
-    ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
+    ensure(recv(src, addr, IPV4_SIZE, 0) > 0, NULL); // >> DST_ADDR
+    ensure(recv(src, port, PORT_SIZE, 0) > 0, NULL); // >> DST_PORT
 
     ensure(send(dst, "\x01", 1, 0) > 0, "ATYP --> [remote]");
     ensure(send(dst, addr, IPV4_SIZE, 0) > 0, "DST_ADDR --> [remote]");
@@ -121,9 +121,9 @@ int handle_ipv4(int src, int dst)
     ensure(recv(dst, addr, IPV4_SIZE, 0) > 0, "BND_ADDR <-- [remote]");
     ensure(recv(dst, port, PORT_SIZE, 0) > 0, "BND_PORT <-- [remote]");
 
-    ensure(send(src, "\x05\x00\x00\x01", 4, 0) > 0, "<< VER|ACK|RSV|ATYP");
-    ensure(send(src, addr, IPV4_SIZE, 0) > 0, "<< BND_ADDR");
-    ensure(send(src, port, PORT_SIZE, 0) > 0, "<< BND_PORT");
+    ensure(send(src, "\x05\x00\x00\x01", 4, 0) > 0, NULL); // << VER|ACK|RSV|ATYP
+    ensure(send(src, addr, IPV4_SIZE, 0) > 0, NULL);       // << BND_ADDR
+    ensure(send(src, port, PORT_SIZE, 0) > 0, NULL);       // << BND_PORT
     return 0;
 
 error:
@@ -136,8 +136,8 @@ int handle_ipv6(int src, int dst)
     char addr[IPV6_SIZE];
     char port[PORT_SIZE];
 
-    ensure(recv(src, addr, IPV6_SIZE, 0) > 0, ">> DST_ADDR");
-    ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
+    ensure(recv(src, addr, IPV6_SIZE, 0) > 0, NULL); // >> DST_ADDR
+    ensure(recv(src, port, PORT_SIZE, 0) > 0, NULL); // >> DST_PORT
 
     ensure(send(dst, "\x04", 1, 0) > 0, "ATYP --> [remote]");
     ensure(send(dst, addr, IPV6_SIZE, 0) > 0, "DST_ADDR --> [remote]");
@@ -147,9 +147,9 @@ int handle_ipv6(int src, int dst)
     ensure(recv(dst, addr, IPV6_SIZE, 0) > 0, "BND_ADDR <-- [remote]");
     ensure(recv(dst, port, PORT_SIZE, 0) > 0, "BND_PORT <-- [remote]");
 
-    ensure(send(src, "\x05\x00\x00\x04", 4, 0) > 0, "<< VER|ACK|RSV|ATYP");
-    ensure(send(src, addr, IPV6_SIZE, 0) > 0, "<< BND_ADDR");
-    ensure(send(src, port, PORT_SIZE, 0) > 0, "<< BND_PORT");
+    ensure(send(src, "\x05\x00\x00\x04", 4, 0) > 0, NULL); // << VER|ACK|RSV|ATYP
+    ensure(send(src, addr, IPV6_SIZE, 0) > 0, NULL);       // << BND_ADDR
+    ensure(send(src, port, PORT_SIZE, 0) > 0, NULL);       // << BND_PORT
     return 0;
 
 error:
@@ -162,9 +162,9 @@ int handle_hostname(int src, int dst)
     char addr[256] = {};
     char port[PORT_SIZE];
 
-    ensure(recv(src, &buf, 1, 0) > 0 && buf > 0, ">> N_ADDR");
-    ensure(recv(src, addr, buf, 0) > 0, ">> DST_ADDR");
-    ensure(recv(src, port, PORT_SIZE, 0) > 0, ">> DST_PORT");
+    ensure(recv(src, &buf, 1, 0) > 0 && buf > 0, NULL); // >> N_ADDR
+    ensure(recv(src, addr, buf, 0) > 0, NULL);          // >> DST_ADDR
+    ensure(recv(src, port, PORT_SIZE, 0) > 0, NULL);    // >> DST_PORT
 
     ensure(send(dst, "\x03", 1, 0) > 0, "ATYP --> [remote]");
     ensure(send(dst, &buf, 1, 0) > 0, "N_ADDR --> [remote]");
@@ -175,9 +175,9 @@ int handle_hostname(int src, int dst)
     ensure(recv(dst, addr, IPV4_SIZE, 0) > 0, "BND_ADDR(v4) <-- [remote]");
     ensure(recv(dst, port, PORT_SIZE, 0) > 0, "BND_PORT <-- [remote]");
 
-    ensure(send(src, "\x05\x00\x00\x01", 4, 0) > 0, "<< VER|ACK|RSV|ATYP(v4)");
-    ensure(send(src, addr, IPV4_SIZE, 0) > 0, "<< BND_ADDR");
-    ensure(send(src, port, PORT_SIZE, 0) > 0, "<< BND_PORT");
+    ensure(send(src, "\x05\x00\x00\x01", 4, 0) > 0, NULL); // << VER|ACK|RSV|ATYP(v4)
+    ensure(send(src, addr, IPV4_SIZE, 0) > 0, NULL);       // << BND_ADDR
+    ensure(send(src, port, PORT_SIZE, 0) > 0, NULL);       // << BND_PORT
     return 0;
 
 error:

@@ -33,9 +33,10 @@ int loop(int[2]);
 
 #define PAD_SIZE 13
 
-#define ensure(cond, msg)                                \
-    if (!(cond))                                         \
-    {                                                    \
-        fprintf(stderr, "[error(%d)] %s\n", errno, msg); \
-        goto error;                                      \
+#define ensure(cond, msg)                                    \
+    if (!(cond))                                             \
+    {                                                        \
+        if (msg)                                             \
+            fprintf(stderr, "[error(%d)] %s\n", errno, msg); \
+        goto error;                                          \
     }
