@@ -39,8 +39,6 @@ int loop(int pair[2])
 
     for (;;)
     {
-        char n_closed = 0;
-
         int res = poll((pollfd_t *)&fds, 2, LOOP_POLL_TIMEOUT);
         if (res == -1)
             return EXIT_POLL_ERR;
@@ -56,13 +54,11 @@ int loop(int pair[2])
                 if (size == -1)
                     return EXIT_RECV_ERR;
                 if (size == 0)
-                    n_closed++;
-                // no error checking here
+                    return EXIT_SHUTDOWN;
+
+                // best-effort delivery, no error checking here
                 send(pair[i ^ 1], buf, size, 0);
             }
         }
-
-        if (n_closed == 2)
-            return EXIT_SHUTDOWN;
     }
 }
