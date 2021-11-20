@@ -1,6 +1,5 @@
 #include "lib.h"
 
-#define PORT 2080
 void *handle(void *);
 int handle_by_type(int);
 int handle_ipv4(int);
