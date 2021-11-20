@@ -43,7 +43,7 @@ int connect_by_name(char *name, char *port)
     hints.ai_family = AF_INET; // use IPv4 for now
     hints.ai_socktype = SOCK_STREAM;
 
-    addrinfo_t *result;
+    addrinfo_t *result = NULL;
     ensure(getaddrinfo(name, port, &hints, &result) == 0, "getaddrinfo()");
 
     addrinfo_t *p;
