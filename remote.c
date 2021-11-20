@@ -56,7 +56,7 @@ void *handle(void *arg)
     ensure(recvall(pair[0], pad, PAD_SIZE, 0) > 0, "[local] --> (pad)");
     ensure(sendall(pair[0], pad, PAD_SIZE, 0) > 0, "[local] <-- (pad)");
 
-    ensure((pair[1] = handle_by_type(pair[0])) > 0, "failed to establish connection");
+    ensure((pair[1] = handle_by_type(pair[0])) > 0, "aborted");
 
     loop(pair);
 
