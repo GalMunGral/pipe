@@ -1,0 +1,7 @@
+#!/usr/bin/sh
+
+cp telescope.service /etc/systemd/system
+systemctl daemon-reload
+systemctl restart telescope
+systemctl status telescope
+
