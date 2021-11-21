@@ -1,6 +1,6 @@
 #include "lib.h"
 
-int loop(int pair[2])
+int loop(const int pair[2])
 {
     pollfd_t fds[2];
     fds[0].fd = pair[0];
@@ -34,7 +34,7 @@ int loop(int pair[2])
     }
 }
 
-int connect_by_name(char *name, char *port)
+int connect_by_name(const char *name, const char *port)
 {
     int sock = -1;
 

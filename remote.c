@@ -1,10 +1,10 @@
 #include "lib.h"
 
 void *handle(void *);
-int handle_by_type(int);
-int handle_ipv4(int);
-int handle_ipv6(int);
-int handle_hostname(int);
+int handle_by_type(const int);
+int handle_ipv4(const int);
+int handle_ipv6(const int);
+int handle_hostname(const int);
 
 int sock;
 short port;
@@ -14,7 +14,7 @@ void cleanup()
     close(sock);
 }
 
-int main(int argc, char **argv)
+int main(const int argc, const char **argv)
 {
     atexit(cleanup);
     signal(SIGPIPE, SIG_IGN);
@@ -68,7 +68,7 @@ error:
 /**
  * Returns the newly created socket (connected to the final destination)
  */
-int handle_by_type(int src)
+int handle_by_type(const int src)
 {
     unsigned char atyp;
     ensure(recvall(src, &atyp, 1, 0) > 0, "[local] --> ATYP");
@@ -89,7 +89,7 @@ error:
     return -1;
 }
 
-int handle_ipv4(int src)
+int handle_ipv4(const int src)
 {
     int dst = -1;
 
@@ -116,7 +116,7 @@ error:
     return -1;
 }
 
-int handle_ipv6(int src)
+int handle_ipv6(const int src)
 {
     int dst = -1;
 
@@ -143,7 +143,7 @@ error:
     return -1;
 }
 
-int handle_hostname(int src)
+int handle_hostname(const int src)
 {
     int dst = -1;
 

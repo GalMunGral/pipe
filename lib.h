@@ -21,8 +21,8 @@ typedef struct addrinfo addrinfo_t;
 ssize_t recvall(int, void *, size_t, int);
 ssize_t sendall(int, void *, size_t, int);
 
-int connect_by_name(char *, char *);
-int loop(int[2]);
+int connect_by_name(const char *, const char *);
+int loop(const int[2]);
 
 #define PORT_SIZE 2
 #define IPV4_SIZE 4

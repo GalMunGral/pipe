@@ -1,22 +1,22 @@
 #include "lib.h"
 
 void *handle(void *);
-int handle_by_type(int, int);
-int handle_ipv4(int, int);
-int handle_ipv6(int, int);
-int handle_hostname(int, int);
+int handle_by_type(const int, const int);
+int handle_ipv4(const int, const int);
+int handle_ipv6(const int, const int);
+int handle_hostname(const int, const int);
 
 int sock;
 short port;
-char *remote_addr;
-char *remote_port;
+const char *remote_addr;
+const char *remote_port;
 
 void cleanup()
 {
     close(sock);
 }
 
-int main(int argc, char **argv)
+int main(const int argc, const char **argv)
 {
     atexit(cleanup);
     signal(SIGPIPE, SIG_IGN);
@@ -82,7 +82,7 @@ error:
 /**
  * Returns 0 for success and -1 for error
  */
-int handle_by_type(int src, int dst)
+int handle_by_type(const int src, const int dst)
 {
     char buf[4];
     ensure(recvall(src, buf, 4, 0) > 0, "VER|CMD|RSV|ATYP (aborted)");
@@ -105,7 +105,7 @@ error:
     return -1;
 }
 
-int handle_ipv4(int src, int dst)
+int handle_ipv4(const int src, const int dst)
 {
     unsigned char buf[4 + IPV4_SIZE + PORT_SIZE] = {};
     buf[0] = '\x01';
@@ -121,7 +121,7 @@ error:
     return -1;
 }
 
-int handle_ipv6(int src, int dst)
+int handle_ipv6(const int src, const int dst)
 {
     unsigned char buf[4 + IPV6_SIZE + PORT_SIZE] = {};
     buf[0] = '\x04';
@@ -137,7 +137,7 @@ error:
     return -1;
 }
 
-int handle_hostname(int src, int dst)
+int handle_hostname(const int src, const int dst)
 {
     unsigned char buf[1024] = {};
     buf[0] = '\x03';
