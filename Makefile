@@ -1,21 +1,20 @@
 CC = cc
 
-all: CFLAGS = -Wall -Wextra -Werror
-all: local remote 
-
 debug: CFLAGS = -g -Wall -Wextra -Werror
 debug: all
 
-local: local.o lib.o
-	${CC} -o local local.o lib.o -pthread
+all: CFLAGS = -Wall -Wextra -Werror
+all: local remote 
 
-remote: remote.o lib.o
-	${CC} -o remote remote.o lib.o -pthread
+local: dist/local.o dist/lib.o
+	${CC} -o dist/local dist/local.o dist/lib.o -pthread
 
-%.o: %.c lib.h
+remote: dist/remote.o dist/lib.o
+	${CC} -o dist/remote dist/remote.o dist/lib.o -pthread
+
+dist/%.o: %.c lib.h
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:
-	rm -rf *.dSYM 
-	rm -f *.o remote local 
+	rm -rf dist/*
 
