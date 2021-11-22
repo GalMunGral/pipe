@@ -29,7 +29,7 @@ int loop(const int[2]);
 #define IPV6_SIZE 16
 
 #define LOOP_BUFFER_SIZE 8192
-#define LOOP_POLL_TIMEOUT 5000
+#define LOOP_POLL_TIMEOUT 10000
 
 #define EXIT_SHUTDOWN 0
 #define EXIT_POLL_ERR 1
