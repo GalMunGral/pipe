@@ -64,10 +64,10 @@ void *handle(void *arg)
     ensure(recvall(pair[1], buf, PAD_SIZE, 0) > 0, "(pad) <-- [remote]");
 
     // accept request
-    ensure(recvall(pair[0], buf, 2, 0) > 0, "VER|NMETHODS (aborted)");
-    ensure(buf[0] == '\x05', "SOCKs version not supported");
-    ensure(recvall(pair[0], buf + 2, /* NMETHODS */ buf[1], 0) > 0, "METHODS (aborted)");
-    ensure(sendall(pair[0], "\x05\x00", 2, 0) > 0, "VER|METHOD (failed)");
+    ensure(recvall(pair[0], buf, 2, 0) > 0, "(1) VER+NMETHODS (aborted)");
+    ensure(buf[0] == '\x05', "(1) SOCKs version not supported");
+    ensure(recvall(pair[0], buf + 2, /* NMETHODS */ buf[1], 0) > 0, "(1) METHODS (aborted)");
+    ensure(sendall(pair[0], "\x05\x00", 2, 0) > 0, "(1) VER+METHOD (failed)");
 
     // 2. THE ACTUAL REQUEST
     ensure((handle_by_type(pair[0], pair[1]) == 0), NULL);
@@ -85,9 +85,9 @@ error:
 int handle_by_type(const int src, const int dst)
 {
     char buf[4];
-    ensure(recvall(src, buf, 4, 0) > 0, "VER|CMD|RSV|ATYP (aborted)");
-    ensure(buf[0] == '\x05', "SOCKs version not supported");
-    ensure(buf[1] == '\x01', "SOCKs command not supported");
+    ensure(recvall(src, buf, 4, 0) > 0, "(2) VER+CMD+RSV+ATYP (aborted)");
+    ensure(buf[0] == '\x05', "(2) SOCKs version not supported");
+    ensure(buf[1] == '\x01', "(2) SOCKs command not supported");
 
     switch (buf[3])
     {
@@ -109,13 +109,13 @@ int handle_ipv4(const int src, const int dst)
 {
     unsigned char buf[4 + IPV4_SIZE + PORT_SIZE] = {};
     buf[0] = '\x01';
-    ensure(recvall(src, buf + 1, IPV4_SIZE + PORT_SIZE, 0) > 0, "ATYP+DST (aborted)");
-    ensure(sendall(dst, buf, 1 + IPV4_SIZE + PORT_SIZE, 0) > 0, "ATYP+DST --> [remote]");
+    ensure(recvall(src, buf + 1, IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+DST (aborted)");
+    ensure(sendall(dst, buf, 1 + IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+DST --> [remote]");
     buf[0] = '\x05'; // VER
     buf[1] = '\x00'; // ACK
     buf[2] = '\x00'; // RSV
-    ensure(recvall(dst, buf + 3, 1 + IPV4_SIZE + PORT_SIZE, 0) > 0, "ATYP+BND <-- [remote]");
-    ensure(sendall(src, buf, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "ATYP+BND (failed)");
+    ensure(recvall(dst, buf + 3, 1 + IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+BND <-- [remote]");
+    ensure(sendall(src, buf, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+BND (failed)");
     return 0;
 error:
     return -1;
@@ -125,13 +125,13 @@ int handle_ipv6(const int src, const int dst)
 {
     unsigned char buf[4 + IPV6_SIZE + PORT_SIZE] = {};
     buf[0] = '\x04';
-    ensure(recvall(src, buf + 1, IPV6_SIZE + PORT_SIZE, 0) > 0, "ATYP+DST (aborted)");
-    ensure(sendall(dst, buf, 1 + IPV6_SIZE + PORT_SIZE, 0) > 0, "ATYP+DST --> [remote]");
+    ensure(recvall(src, buf + 1, IPV6_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+DST (aborted)");
+    ensure(sendall(dst, buf, 1 + IPV6_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+DST --> [remote]");
     buf[0] = '\x05'; // VER
     buf[1] = '\x00'; // ACK
     buf[2] = '\x00'; // RSV
-    ensure(recvall(dst, buf + 3, 1 + IPV6_SIZE + PORT_SIZE, 0) > 0, "ATYP+BND <-- [remote]");
-    ensure(sendall(src, buf, 4 + IPV6_SIZE + PORT_SIZE, 0) > 0, "ATYP+BND (failed)");
+    ensure(recvall(dst, buf + 3, 1 + IPV6_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+BND <-- [remote]");
+    ensure(sendall(src, buf, 4 + IPV6_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+BND (failed)");
     return 0;
 error:
     return -1;
@@ -141,14 +141,14 @@ int handle_hostname(const int src, const int dst)
 {
     unsigned char buf[1024] = {};
     buf[0] = '\x03';
-    ensure(recvall(src, buf + 1, 1, 0) > 0, "N_ADDR (aborted)");
-    ensure(recvall(src, buf + 2, /* N_ADDR */ buf[1] + PORT_SIZE, 0) > 0, "ATYP+DST (aborted)");
-    ensure(sendall(dst, buf, 2 + /* N_ADDR */ buf[1] + PORT_SIZE, 0) > 0, "ATYP+DST --> [remote]");
+    ensure(recvall(src, buf + 1, 1, 0) > 0, "(2) N_ADDR (aborted)");
+    ensure(recvall(src, buf + 2, /* N_ADDR */ buf[1] + PORT_SIZE, 0) > 0, "(2) ATYP+DST (aborted)");
+    ensure(sendall(dst, buf, 2 + /* N_ADDR */ buf[1] + PORT_SIZE, 0) > 0, "(2) ATYP+DST --> [remote]");
     buf[0] = '\x05'; // VER
     buf[1] = '\x00'; // ACK
     buf[2] = '\x00'; // RSV
-    ensure(recvall(dst, buf + 3, 1 + IPV4_SIZE + PORT_SIZE, 0) > 0, "ATYP(v4)+BND <-- [remote]");
-    ensure(sendall(src, buf, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "ATYP+BND (failed)");
+    ensure(recvall(dst, buf + 3, 1 + IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+BND <-- [remote]");
+    ensure(sendall(src, buf, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) ATYP+BND (failed)");
     return 0;
 error:
     return -1;

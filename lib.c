@@ -70,8 +70,11 @@ ssize_t recvall(int sockfd, void *buf, size_t len, int flags)
     {
         ssize_t size;
         if ((size = recv(sockfd, buf, rem, flags)) <= 0)
+        {
+            fprintf(stderr, "%zd <- recv(), errno=%d\n", size, errno);
             return size;
-        buf += size;
+        }
+        buf = (void *)((char *)buf + size);
         rem -= size;
     }
     return len;
@@ -84,8 +87,11 @@ ssize_t sendall(int sockfd, void *buf, size_t len, int flags)
     {
         ssize_t size;
         if ((size = send(sockfd, buf, rem, flags)) <= 0)
+        {
+            fprintf(stderr, "%zd <- send(), errno=%d\n", size, errno);
             return size;
-        buf += size;
+        }
+        buf = (void *)((char *)buf + size);
         rem -= size;
     }
     return len;
