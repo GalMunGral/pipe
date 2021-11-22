@@ -20,8 +20,8 @@ typedef struct addrinfo addrinfo_t;
 
 ssize_t recvall(int, void *, size_t, int);
 ssize_t sendall(int, void *, size_t, int);
-
 int connect_by_name(const char *, const char *);
+void spawn_worker(void *(*)(void *), int);
 int loop(const int[2]);
 
 #define PORT_SIZE 2
@@ -38,10 +38,10 @@ int loop(const int[2]);
 
 #define PAD_SIZE 13
 
-#define ensure(cond, msg)                                            \
-    if (!(cond))                                                     \
-    {                                                                \
-        if (msg)                                                     \
-            fprintf(stderr, "[error(%d)] %s\n", errno, (char *)msg); \
-        goto error;                                                  \
+#define ensure(cond, msg)                                          \
+    if (!(cond))                                                   \
+    {                                                              \
+        if (msg)                                                   \
+            fprintf(stderr, "%s, error=%d\n", (char *)msg, errno); \
+        goto error;                                                \
     }

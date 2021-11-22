@@ -40,20 +40,17 @@ int main(const int argc, const char **argv)
 
     printf("listening on %hd\n", port);
 
-    for (;;)
-    {
-        int src;
-        pthread_t thread;
-        if ((src = accept(sock, NULL, NULL)) > 0)
-            pthread_create(&thread, NULL, handle, &src);
-    }
+    while (1)
+        spawn_worker(handle, accept(sock, NULL, NULL));
+
     return 0;
 }
 
 void *handle(void *arg)
 {
-    int pair[2] = {-1, -1};
-    ensure((pair[0] = *(int *)arg) > 0, "socket(local)");
+    int pair[2] = {*(int *)arg, -1};
+    free(arg);
+
     ensure((pair[1] = connect_by_name(remote_addr, remote_port)) > 0, "socket(remote)");
 
     // 1. HANDSHAKE

@@ -1,5 +1,20 @@
 #include "lib.h"
 
+void spawn_worker(void *(*worker_routine)(void *), int client)
+{
+    pthread_t worker_thread;
+    int *arg;
+
+    if (client > 0)
+    {
+        arg = malloc(sizeof(int)); // worker needs to free this
+        *arg = client;
+
+        pthread_create(&worker_thread, NULL, worker_routine, arg);
+        pthread_detach(worker_thread);
+    }
+}
+
 int loop(const int pair[2])
 {
     pollfd_t fds[2];
@@ -71,7 +86,7 @@ ssize_t recvall(int sockfd, void *buf, size_t len, int flags)
         ssize_t size;
         if ((size = recv(sockfd, buf, rem, flags)) <= 0)
         {
-            fprintf(stderr, "%zd <- recv(), errno=%d\n", size, errno);
+            fprintf(stderr, " recv(%zd), errno=%d\n", size, errno);
             return size;
         }
         buf = (void *)((char *)buf + size);
@@ -88,7 +103,7 @@ ssize_t sendall(int sockfd, void *buf, size_t len, int flags)
         ssize_t size;
         if ((size = send(sockfd, buf, rem, flags)) <= 0)
         {
-            fprintf(stderr, "%zd <- send(), errno=%d\n", size, errno);
+            fprintf(stderr, "send(%zd), errno=%d\n", size, errno);
             return size;
         }
         buf = (void *)((char *)buf + size);
