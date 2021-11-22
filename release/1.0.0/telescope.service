@@ -1,3 +1,2 @@
 [Service]
 ExecStart=/usr/local/bin/telescope-remote 3030
-Restart=always
