@@ -55,14 +55,13 @@ void *handle(void *arg)
     ensure(sendall(dst, "\x00\x01", 2, 0) > 0, "[HTTP-SOCSK5](1) METHODS (aborted)");
     ensure(recvall(dst, buf2, 2, 0) > 0, "[HTTP-SOCKS5] (1) VER+METHOD");
 
-    int i = 0;
-
     ensure(recv(src, buf, 4096, 0), "[HTTP] Initial Request");
-    
-    while (!buf[i]) ++i;
     
     char host[50] = {0};
     unsigned short port;
+
+    int i = 0;
+    while (!buf[i]) ++i;
 
     if (0 == strncmp(buf, "GET", 3))  {
         i = strstr(buf, "//") - buf + 2;
