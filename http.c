@@ -1,10 +1,6 @@
 #include "lib.h"
 
 void *handle(void *);
-int handle_by_type(const int, const int);
-int handle_ipv4(const int, const int);
-int handle_ipv6(const int, const int);
-int handle_hostname(const int, const int);
 
 int sock;
 short port;
