@@ -4,7 +4,10 @@ debug: CFLAGS = -g -Wall -Wextra -Werror
 debug: all
 
 all: CFLAGS = -Wall -Wextra -Werror
-all: local remote 
+all: local remote http
+
+http: dist/http.o dist/lib.o
+	${CC} -o dist/http dist/http.o dist/lib.o -pthread
 
 local: dist/local.o dist/lib.o
 	${CC} -o dist/local dist/local.o dist/lib.o -pthread
