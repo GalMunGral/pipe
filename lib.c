@@ -51,7 +51,6 @@ int loop(const int pair[2])
 
 int connect_by_name(const char *name, const char *port)
 {
-    printf("%s, %s\n", name, port);
     int sock = -1;
 
     addrinfo_t hints;

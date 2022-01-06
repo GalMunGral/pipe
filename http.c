@@ -49,21 +49,19 @@ int main(const int argc, const char **argv)
 void *handle(void *arg)
 {
     int src = *(int *)arg, dst; 
-
     free(arg);
-    
-    ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "socket(remote)");
+    ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "[HTTP] socket(remote)");
 
     char buf[4096] = {0};
     char buf2[4096];
 
-    ensure(sendall(dst, "\x05\x02", 2, 0) > 0, "(1) VER+NMETHODS (aborted)");
-    ensure(sendall(dst, "\x00\x01", 2, 0) > 0, "(1) METHODS (aborted)");
-    ensure(recvall(dst, buf2, 2, 0) > 0, "(1) VER+METHOD");
+    ensure(sendall(dst, "\x05\x02", 2, 0) > 0, "[HTTP-SOCKS5] (1) VER+NMETHODS (aborted)");
+    ensure(sendall(dst, "\x00\x01", 2, 0) > 0, "[HTTP-SOCSK5](1) METHODS (aborted)");
+    ensure(recvall(dst, buf2, 2, 0) > 0, "[HTTP-SOCKS5] (1) VER+METHOD");
 
     int i = 0;
 
-    ensure(recv(src, buf, 4096, 0), "recv initial");
+    ensure(recv(src, buf, 4096, 0), "[HTTP] Initial Request");
     
     while (!buf[i]) ++i;
     
@@ -71,67 +69,54 @@ void *handle(void *arg)
     unsigned short port;
 
     if (0 == strncmp(buf, "GET", 3))  {
-        // for (i += 3; buf[i] && buf[i] == ' '; ++i);
         i = strstr(buf, "//") - buf + 2;
-        printf("GET\n");
 
-        int j;
-        for (j = i; buf[j] && buf[j] != ' ' && buf[j] != '/'; ++j);
+        int j = i;
+        while (buf[j] && buf[j] != ' ' && buf[j] != '/') ++j;
         strncpy(host, buf + i, j - i);
-        printf("HOST: %s\n", host);
-
+        
         port = htons(80);
 
         char len = strlen(host);
-
-        ensure(sendall(dst, "\x05\x01\x00\x03", 4, 0) > 0, "(2) VER+CMD+RSV+ATYP (aborted)");
-        ensure(sendall(dst, &len, 1, 0) > 0, "(2) n_addr (aborted)");
-        ensure(sendall(dst, host, len, 0) > 0, "(2) atyp+dst_addr (aborted)");
-        ensure(sendall(dst, &port, 2, 0) > 0, "(2) atyp+dst_port (aborted)");
-        ensure(recvall(dst, buf2, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) atyp+bnd (failed)");
-
-
+        ensure(sendall(dst, "\x05\x01\x00\x03", 4, 0) > 0, "[HTTP-SOCSK5] (2) VER+CMD+RSV+ATYP");
+        ensure(sendall(dst, &len, 1, 0) > 0, "[HTTP-SOCSK5] (2) n_addr");
+        ensure(sendall(dst, host, len, 0) > 0, "[HTTP-SOCSK5] (2) atyp+dst_addr");
+        ensure(sendall(dst, &port, 2, 0) > 0, "[HTTP-SOCSK5] (2) atyp+dst_port");
+        ensure(recvall(dst, buf2, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "[HTTP-SOCSK5] (2) atyp+bnd");
+        
+        // Forward the first HTTP request
         ensure(sendall(dst, buf, strlen(buf), 0) > 0, "buf");
-
     } else if (0 == strncmp(buf, "CONNECT", 7)) {
         for (i += 7; buf[i] && buf[i] == ' '; ++i);
-        printf("CONNECT\n");
 
-        int j;
-        for (j = i; buf[j] && buf[j] != ' ' && buf[j] != ':'; ++j);
+        int j = i;
+        while (buf[j] && buf[j] != ' ' && buf[j] != ':') ++j;
         strncpy(host, buf + i, j - i);
-        printf("HOST: %s\n", host);
+        ++j;
 
         char port_buf[10];
-        ++j;
-        int k;
-        for (k = j; buf[k] && buf[k] != ' '; ++k);
+        int k = j;
+        while (buf[k] && buf[k] != ' ') ++k;
         strncpy(port_buf, buf + j, k - j);
-        printf("PORT: %s\n", port_buf);
 
         port = htons(atoi(port_buf));
-        printf("DONE");
 
         char len = strlen(host);
+
+        ensure(sendall(dst, "\x05\x01\x00\x03", 4, 0) > 0, "[HTTP-SOCSK5] (2) VER+CMD+RSV+ATYP");
+        ensure(sendall(dst, &len, 1, 0) > 0, "[HTTP-SOCSK5] (2) n_addr");
+        ensure(sendall(dst, host, len, 0) > 0, "[HTTP-SOCSK5] (2) atyp+dst_addr");
+        ensure(sendall(dst, &port, 2, 0) > 0, "[HTTP-SOCSK5] (2) atyp+dst_port");
+        ensure(recvall(dst, buf2, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "[HTTP-SOCKS5] (2) atyp+bnd");
+
         char* res = "HTTP/1.1 200 OK\n\n";
-
-        ensure(sendall(dst, "\x05\x01\x00\x03", 4, 0) > 0, "(2) VER+CMD+RSV+ATYP (aborted)");
-        ensure(sendall(dst, &len, 1, 0) > 0, "(2) n_addr (aborted)");
-        ensure(sendall(dst, host, len, 0) > 0, "(2) atyp+dst_addr (aborted)");
-        ensure(sendall(dst, &port, 2, 0) > 0, "(2) atyp+dst_port (aborted)");
-        ensure(recvall(dst, buf2, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "(2) atyp+bnd (failed)");
-
-
         ensure(sendall(src, res, strlen(res), 0) > 0, "res");
     } else {
         goto error;
     }
 
-   
-
     int pair[] = {src, dst};
     loop(pair);
-
 error:
     close(src);
     close(dst);
