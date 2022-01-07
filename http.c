@@ -59,7 +59,7 @@ void *handle(void *arg)
 
     printf("----------\n%s", buf);
     
-    char host[50] = {0};
+    char host[256] = {0};
     unsigned short port;
 
     char *p1 = buf, *p2 = buf;
