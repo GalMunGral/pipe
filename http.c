@@ -56,19 +56,22 @@ void *handle(void *arg)
     ensure(recvall(dst, buf2, 2, 0) > 0, "[HTTP-SOCKS5] (1) VER+METHOD");
 
     ensure(recv(src, buf, 4096, 0), "[HTTP] Initial Request");
+
+    printf("----------\n%s", buf);
     
     char host[50] = {0};
     unsigned short port;
 
-    int i = 0;
-    while (!buf[i]) ++i;
+    char *p1 = buf, *p2 = buf;
+    for (; *p2 && *p2 == ' '; ++p1, ++p2);
 
-    if (0 == strncmp(buf, "GET", 3))  {
-        i = strstr(buf, "//") - buf + 2;
+    if (0 == strncmp(p2, "GET", 3))  { // HTTP
+        p2 = strstr(p2, "//");
+        ensure(p2 > p1, "Cannot find //");
 
-        int j = i;
-        while (buf[j] && buf[j] != ' ' && buf[j] != '/') ++j;
-        strncpy(host, buf + i, j - i);
+        for (p1 = p2 += 2; *p2 && *p2 != ' ' && *p2 != '/'; ++p2);
+        strncpy(host, p1, p2 - p1);
+        printf("host: %s\n", host);
         
         port = htons(80);
 
@@ -81,18 +84,19 @@ void *handle(void *arg)
         
         // Forward the first HTTP request
         ensure(sendall(dst, buf, strlen(buf), 0) > 0, "buf");
-    } else if (0 == strncmp(buf, "CONNECT", 7)) {
-        for (i += 7; buf[i] && buf[i] == ' '; ++i);
+    } else if (0 == strncmp(p2, "CONNECT", 7)) { // HTTPS
+        for (p2 += 7; *p2 && *p2 == ' '; ++p2);
+        for (p1 = p2; *p2 && *p2 != ' ' && *p2 != ':'; ++p2);
+        ensure(*p2 == ':', "`:` not found");
+        
+        strncpy(host, p1, p2 - p1);
+        printf("host: %s\n", host);
 
-        int j = i;
-        while (buf[j] && buf[j] != ' ' && buf[j] != ':') ++j;
-        strncpy(host, buf + i, j - i);
-        ++j;
 
         char port_buf[10];
-        int k = j;
-        while (buf[k] && buf[k] != ' ') ++k;
-        strncpy(port_buf, buf + j, k - j);
+        for (p1 = ++p2; *p2 && *p2 != ' '; ++p2);
+        strncpy(port_buf, p1, p2 - p1);
+        printf("port: %s\n\n", port_buf);
 
         port = htons(atoi(port_buf));
 

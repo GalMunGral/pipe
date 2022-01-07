@@ -1,10 +1,9 @@
 CC = cc
 
-debug: CFLAGS = -g -Wall -Wextra -Werror
-debug: all
-
-all: CFLAGS = -Wall -Wextra -Werror
 all: local remote http
+
+debug: CFLAGS = -g -O0 -Wall -Wextra -Werror
+debug: all
 
 http: dist/http.o dist/lib.o
 	${CC} -o dist/http dist/http.o dist/lib.o -pthread
