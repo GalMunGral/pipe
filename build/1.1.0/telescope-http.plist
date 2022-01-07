@@ -4,12 +4,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.galmungral.telescope</string>
+    <string>com.galmungral.telescope-http</string>
     <key>ProgramArguments</key>
     <array>             
-        <string>/usr/local/bin/telescope-local</string>
-        <string>3030</string>
-        <string>telescope.remote</string>
+        <string>/usr/local/bin/telescope-http</string>
+        <string>3031</string>
+        <string>localhost</string>
         <string>3030</string>
     </array>
     <key>RunAtLoad</key>
