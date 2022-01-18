@@ -34,7 +34,7 @@ int main(const int argc, const char **argv)
     assert(bind(sock, (addr_t *)&addr, sizeof(addr4_t)) == 0);
     assert(listen(sock, 100) == 0);
 
-    printf("listening on %hd\n", port);
+    // printf("listening on %hd\n", port);
 
     while (1)
         spawn_worker(handle, accept(sock, NULL, NULL));
@@ -57,7 +57,7 @@ void *handle(void *arg)
 
     ensure(recv(src, buf, 4096, 0), "[HTTP] Initial Request");
 
-    printf("----------\n%s", buf);
+    // printf("----------\n%s", buf);
     
     char host[256] = {0};
     unsigned short port;
@@ -71,7 +71,7 @@ void *handle(void *arg)
 
         for (p1 = p2 += 2; *p2 && *p2 != ' ' && *p2 != '/'; ++p2);
         strncpy(host, p1, p2 - p1);
-        printf("host: %s\n", host);
+        // printf("host: %s\n", host);
         
         port = htons(80);
 
@@ -90,13 +90,13 @@ void *handle(void *arg)
         ensure(*p2 == ':', "`:` not found");
         
         strncpy(host, p1, p2 - p1);
-        printf("host: %s\n", host);
+        // printf("host: %s\n", host);
 
 
         char port_buf[10];
         for (p1 = ++p2; *p2 && *p2 != ' '; ++p2);
         strncpy(port_buf, p1, p2 - p1);
-        printf("port: %s\n\n", port_buf);
+        // printf("port: %s\n\n", port_buf);
 
         port = htons(atoi(port_buf));
 
