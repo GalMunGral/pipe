@@ -7,3 +7,8 @@ systemctl daemon-reload
 systemctl restart telescope-remote
 systemctl status telescope-remote
 
+# Ubuntu
+sudo ufw allow 3030/tcp
+sudo ufw reload
+sudo ufw status
+
