@@ -15,6 +15,7 @@ remote: dist/remote.o dist/lib.o
 	${CC} -o dist/remote dist/remote.o dist/lib.o -pthread
 
 dist/%.o: %.c lib.h
+	mkdir -p dist
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:
