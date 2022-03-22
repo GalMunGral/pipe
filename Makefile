@@ -1,6 +1,6 @@
 CC = cc
 
-all: local remote http
+all: local remote http test
 
 debug: CFLAGS = -g -O0 -Wall -Wextra -Werror
 debug: all
@@ -17,6 +17,10 @@ remote: dist/remote.o dist/lib.o
 dist/%.o: %.c lib.h
 	mkdir -p dist
 	${CC} ${CFLAGS} -c -o $@ $<
+
+test: CFLAGS = -g -O0
+test: test.c
+	$(CC) $(CFLAGS) -o $@ $^ -luv
 
 clean:
 	rm -rf dist/*
