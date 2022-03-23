@@ -14,12 +14,6 @@ const char *remote_port;
 
 typedef enum
 {
-    ST_SOCKS,
-    ST_TELESCOPE,
-} sock_tag_t;
-
-typedef enum
-{
     INIT,
     SOCKS_HANDSHAKE_REQUESTED,
     TUNNEL_HANDSHAKE_FINISHED,
@@ -38,7 +32,6 @@ struct ts_sock_s
 {
     int offset;
     char buffer[TS_SOCK_BUF_SIZE];
-    sock_tag_t tag;
     uv_tcp_t stream;
     ts_sock_t *peer;
     ts_sockpair_t *pair;
