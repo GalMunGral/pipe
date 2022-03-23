@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 #include <uv.h>
 
 #define PADDING_SIZE 13
