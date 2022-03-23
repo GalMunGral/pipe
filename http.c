@@ -44,7 +44,7 @@ int main(const int argc, const char **argv)
 
 void *handle(void *arg)
 {
-    int src = *(int *)arg, dst; 
+    int src = *(int *)arg, dst;
     free(arg);
     ensure((dst = connect_by_name(remote_addr, remote_port)) > 0, "[HTTP] socket(remote)");
 
@@ -58,21 +58,24 @@ void *handle(void *arg)
     ensure(recv(src, buf, 4096, 0), "[HTTP] Initial Request");
 
     // printf("----------\n%s", buf);
-    
+
     char host[256] = {0};
     unsigned short port;
 
     char *p1 = buf, *p2 = buf;
-    for (; *p2 && *p2 == ' '; ++p1, ++p2);
+    for (; *p2 && *p2 == ' '; ++p1, ++p2)
+        ;
 
-    if (0 == strncmp(p2, "GET", 3))  { // HTTP
+    if (0 == strncmp(p2, "GET", 3))
+    { // HTTP
         p2 = strstr(p2, "//");
         ensure(p2 > p1, "Cannot find //");
 
-        for (p1 = p2 += 2; *p2 && *p2 != ' ' && *p2 != '/'; ++p2);
+        for (p1 = p2 += 2; *p2 && *p2 != ' ' && *p2 != '/'; ++p2)
+            ;
         strncpy(host, p1, p2 - p1);
         // printf("host: %s\n", host);
-        
+
         port = htons(80);
 
         char len = strlen(host);
@@ -81,20 +84,24 @@ void *handle(void *arg)
         ensure(sendall(dst, host, len, 0) > 0, "[HTTP-SOCSK5] (2) atyp+dst_addr");
         ensure(sendall(dst, &port, 2, 0) > 0, "[HTTP-SOCSK5] (2) atyp+dst_port");
         ensure(recvall(dst, buf2, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "[HTTP-SOCSK5] (2) atyp+bnd");
-        
+
         // Forward the first HTTP request
         ensure(sendall(dst, buf, strlen(buf), 0) > 0, "buf");
-    } else if (0 == strncmp(p2, "CONNECT", 7)) { // HTTPS
-        for (p2 += 7; *p2 && *p2 == ' '; ++p2);
-        for (p1 = p2; *p2 && *p2 != ' ' && *p2 != ':'; ++p2);
+    }
+    else if (0 == strncmp(p2, "CONNECT", 7))
+    { // HTTPS
+        for (p2 += 7; *p2 && *p2 == ' '; ++p2)
+            ;
+        for (p1 = p2; *p2 && *p2 != ' ' && *p2 != ':'; ++p2)
+            ;
         ensure(*p2 == ':', "`:` not found");
-        
+
         strncpy(host, p1, p2 - p1);
         // printf("host: %s\n", host);
 
-
         char port_buf[10];
-        for (p1 = ++p2; *p2 && *p2 != ' '; ++p2);
+        for (p1 = ++p2; *p2 && *p2 != ' '; ++p2)
+            ;
         strncpy(port_buf, p1, p2 - p1);
         // printf("port: %s\n\n", port_buf);
 
@@ -108,9 +115,11 @@ void *handle(void *arg)
         ensure(sendall(dst, &port, 2, 0) > 0, "[HTTP-SOCSK5] (2) atyp+dst_port");
         ensure(recvall(dst, buf2, 4 + IPV4_SIZE + PORT_SIZE, 0) > 0, "[HTTP-SOCKS5] (2) atyp+bnd");
 
-        char* res = "HTTP/1.1 200 OK\n\n";
+        char *res = "HTTP/1.1 200 OK\n\n";
         ensure(sendall(src, res, strlen(res), 0) > 0, "res");
-    } else {
+    }
+    else
+    {
         goto error;
     }
 
@@ -121,4 +130,3 @@ error:
     close(dst);
     return NULL;
 }
-
