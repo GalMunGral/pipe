@@ -15,6 +15,9 @@ const char *remote_port;
 
 typedef enum
 {
+    CLOSED = -2,
+    HALF_OPEN,
+    CLOSING,
     INIT,
     SOCKS_HANDSHAKE_REQUESTED,
     TUNNEL_HANDSHAKE_FINISHED,
@@ -50,6 +53,7 @@ ts_sockpair_t *ts_sockpair_init(uv_loop_t *loop)
 {
     ts_sockpair_t *sp = malloc(sizeof(ts_sockpair_t));
     memset(sp, 0, sizeof(ts_sockpair_t));
+    sp->state = INIT;
     uv_tcp_init(loop, &sp->sock1.stream);
     uv_tcp_init(loop, &sp->sock2.stream);
     sp->sock1.stream.data = (void *)&sp->sock1;
@@ -61,11 +65,22 @@ ts_sockpair_t *ts_sockpair_init(uv_loop_t *loop)
     return sp;
 }
 
-void ts_sockpair_deinit(ts_sockpair_t *pair)
+void on_sockpair_close(uv_handle_t *handle)
 {
-    uv_close((uv_handle_t *)&pair->sock1.stream, NULL);
-    uv_close((uv_handle_t *)&pair->sock2.stream, NULL);
-    free(pair);
+    uv_stream_t *stream = (uv_stream_t *)handle;
+    ts_sock_t *sock = (ts_sock_t *)stream->data;
+    ts_sockpair_t *sp = sock->pair;
+    if (--sp->state == CLOSED)
+    {
+        free(sp);
+    }
+}
+
+void ts_sockpair_deinit(ts_sockpair_t *sp)
+{
+    sp->state = CLOSING;
+    uv_close((uv_handle_t *)&sp->sock1.stream, on_sockpair_close);
+    uv_close((uv_handle_t *)&sp->sock2.stream, on_sockpair_close);
 }
 
 void alloc_buffer(uv_handle_t *handle,
