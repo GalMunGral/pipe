@@ -1,31 +1,33 @@
 CC = cc
 
-all: local remote http uv_remote uv_local
+all: local remote http 
 
-debug: CFLAGS = -g -O0 -Wall -Wextra -Werror
+debug: CFLAGS = -g -O0 -Wall -WExtra -Werror
 debug: all
 
-http: dist/http.o dist/lib.o
-	${CC} -o dist/http dist/http.o dist/lib.o -pthread
-
-local: dist/local.o dist/lib.o
-	${CC} -o dist/local dist/local.o dist/lib.o -pthread
-
-remote: dist/remote.o dist/lib.o
-	${CC} -o dist/remote dist/remote.o dist/lib.o -pthread
+pre-build:
+	mkdir -p dist
 
 dist/%.o: %.c lib.h
-	mkdir -p dist
-	${CC} ${CFLAGS} -c -o $@ $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-uv_remote: CFLAGS = -g -O0
-uv_remote: uv_remote.c
-	$(CC) $(CFLAGS) -o dist/$@ $^ -luv
+http: pre-build
+	make dist/http
 
-uv_local: CFLAGS = -g -O0
-uv_local: uv_local.c
-	$(CC) $(CFLAGS) -o dist/$@ $^ -luv
+dist/http: dist/http.o dist/lib.o
+	$(CC) -o $@ $^ -pthread
+
+remote: pre-build 
+	make dist/remote
+
+dist/remote: remote.c
+	$(CC) $(CFLAGS) -o $@ $^ -luv
+
+local: pre-build 
+	make dist/local
+
+dist/local: local.c
+	$(CC) $(CFLAGS) -o $@ $^ -luv
 
 clean:
-	rm -rf dist/*
-
+	rm -rf dist
