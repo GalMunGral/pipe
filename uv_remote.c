@@ -10,7 +10,10 @@ uv_loop_t *loop;
 
 typedef enum
 {
-    INIT = 0,
+    CLOSED = -2,
+    HALF_OPEN,
+    CLOSING,
+    INIT,
     HANDSHAKE_FINISHED,
     CONNECTING,
     CONNECTED,
@@ -44,6 +47,7 @@ ts_sockpair_t *ts_sockpair_init(uv_loop_t *loop)
 {
     ts_sockpair_t *sp = malloc(sizeof(ts_sockpair_t));
     memset(sp, 0, sizeof(ts_sockpair_t));
+    sp->state = INIT;
     uv_tcp_init(loop, &sp->sock1.stream);
     uv_tcp_init(loop, &sp->sock2.stream);
     sp->sock1.stream.data = (void *)&sp->sock1;
@@ -55,11 +59,22 @@ ts_sockpair_t *ts_sockpair_init(uv_loop_t *loop)
     return sp;
 }
 
-void ts_sockpair_deinit(ts_sockpair_t *pair)
+void on_sockpair_close(uv_handle_t *handle)
 {
-    uv_close((uv_handle_t *)&pair->sock1.stream, NULL);
-    uv_close((uv_handle_t *)&pair->sock2.stream, NULL);
-    free(pair);
+    uv_stream_t *stream = (uv_stream_t *)handle;
+    ts_sock_t *sock = (ts_sock_t *)stream->data;
+    ts_sockpair_t *sp = sock->pair;
+    if (--sp->state == CLOSED)
+    {
+        free(sp);
+    }
+}
+
+void ts_sockpair_deinit(ts_sockpair_t *sp)
+{
+    sp->state = CLOSING;
+    uv_close((uv_handle_t *)&sp->sock1.stream, on_sockpair_close);
+    uv_close((uv_handle_t *)&sp->sock2.stream, on_sockpair_close);
 }
 
 void alloc_buffer(uv_handle_t *handle,
@@ -162,6 +177,8 @@ void on_server_connect(uv_connect_t *req, int status)
     memcpy(w->data.base + 5, &addr.sin_port, 2);
 
     uv_write(&w->req, (uv_stream_t *)&sp->sock1.stream, &w->data, 1, on_write);
+
+    free(req);
 }
 
 void on_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res)
