@@ -230,8 +230,8 @@ void parse_request(uv_stream_t *client,
     memcpy(ctx->name, ctx->buffer + name_offset, n_name);
     unsigned short bin_port = *(unsigned short *)(ctx->buffer + port_offset);
     sprintf(ctx->port, "%hu", ntohs(bin_port));
-    connect_to_remote(client, ctx->name, ctx->port);
     ctx->handler = noop;
+    connect_to_remote(client, ctx->name, ctx->port);
 }
 
 void handshake(uv_stream_t *client,

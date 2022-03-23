@@ -1,6 +1,6 @@
 CC = cc
 
-all: local remote http test
+all: local remote http uv_remote uv_local
 
 debug: CFLAGS = -g -O0 -Wall -Wextra -Werror
 debug: all
@@ -18,9 +18,13 @@ dist/%.o: %.c lib.h
 	mkdir -p dist
 	${CC} ${CFLAGS} -c -o $@ $<
 
-test: CFLAGS = -g -O0
-test: test.c
-	$(CC) $(CFLAGS) -o $@ $^ -luv
+uv_remote: CFLAGS = -g -O0
+uv_remote: uv_remote.c
+	$(CC) $(CFLAGS) -o dist/$@ $^ -luv
+
+uv_local: CFLAGS = -g -O0
+uv_local: uv_local.c
+	$(CC) $(CFLAGS) -o dist/$@ $^ -luv
 
 clean:
 	rm -rf dist/*
