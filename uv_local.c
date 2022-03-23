@@ -19,7 +19,7 @@ typedef enum
     TUNNEL_HANDSHAKE_FINISHED,
     READY,
     PROXY_REQUEST_SENT,
-} sockpair_state_t;
+} ts_state_t;
 
 typedef struct ts_sock_s ts_sock_t;
 typedef struct ts_sockpair_s ts_sockpair_t;
@@ -40,7 +40,7 @@ struct ts_sock_s
 
 struct ts_sockpair_s
 {
-    sockpair_state_t state;
+    ts_state_t state;
     ts_sock_t sock1;
     ts_sock_t sock2;
 };
@@ -108,6 +108,14 @@ void on_write(uv_write_t *req, int status)
     ts_write_t *w = (ts_write_t *)req->data;
     free(w->data.base);
     free(w);
+}
+
+void on_read(uv_stream_t *stream,
+             ssize_t nread,
+             const uv_buf_t *buf)
+{
+    ts_sock_t *s = (ts_sock_t *)stream->data;
+    s->handler(s, nread, buf);
 }
 
 void forward_to_peer(ts_sock_t *s,
@@ -324,14 +332,6 @@ void on_tunnel_read(ts_sock_t *s,
     }
 }
 
-void on_read(uv_stream_t *stream,
-             ssize_t nread,
-             const uv_buf_t *buf)
-{
-    ts_sock_t *s = (ts_sock_t *)stream->data;
-    s->handler(s, nread, buf);
-}
-
 void on_tunnel_connected(uv_connect_t *req, int status)
 {
     ts_sockpair_t *sp = (ts_sockpair_t *)req->data;
@@ -377,7 +377,7 @@ int main(int argc, const char **argv)
 {
     if (argc < 4)
     {
-        fprintf(stderr, "Usage: uv_remote [port] [remote-ip] [remote-port]\n");
+        fprintf(stderr, "Usage: uv_local [port] [remote-ip] [remote-port]\n");
         return 1;
     }
     remote_addr = argv[2];
