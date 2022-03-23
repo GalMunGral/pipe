@@ -183,6 +183,20 @@ void noop(uv_stream_t *client,
           ssize_t nread,
           const uv_buf_t *buf)
 {
+    if (nread < 0)
+    {
+        if (nread != UV_EOF)
+            fprintf(stderr, "Read error %s\n", uv_err_name(nread));
+        uv_close((uv_handle_t *)client, NULL);
+        return;
+    }
+
+    if (nread == 0)
+    {
+        printf("uh oh = 0\n");
+        return;
+    }
+
     printf("SHOULDN'T BE HERE\n");
 }
 
@@ -224,6 +238,11 @@ void parse_request(uv_stream_t *client,
     if (ctx->offset < expected)
     {
         printf("LESS THAN EXPTECTed\n");
+        return;
+    }
+    if (ctx->offset > expected)
+    {
+        printf("MORE THAN EXPTECTed\n");
         return;
     }
 
@@ -271,7 +290,7 @@ void handle(uv_stream_t *client,
     ctx->handler(client, nread, buf);
 }
 
-void on_new_connection(uv_stream_t *server, int status)
+void on_new_client(uv_stream_t *server, int status)
 {
     // printf("new connection\n");
     if (status < 0)
@@ -316,7 +335,7 @@ int main(int argc, const char **argv)
     uv_tcp_bind(&server, (const struct sockaddr *)&addr, 0);
 
     int r;
-    if ((r = uv_listen((uv_stream_t *)&server, 10, on_new_connection)))
+    if ((r = uv_listen((uv_stream_t *)&server, 10, on_new_client)))
     {
         fprintf(stderr, "Listen error %s\n", uv_strerror(r));
         return 1;

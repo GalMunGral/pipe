@@ -3,10 +3,76 @@
 #include <uv.h>
 
 #define PADDING_SIZE 13
+#define TELES_RES_SIZE 7
+#define SOCKS_RES_SIZE 10
+#define TS_SOCK_BUF_SIZE 4096
 
-const char *peer_addr;
-const char *peer_port;
 uv_loop_t *loop;
+
+const char *remote_addr;
+const char *remote_port;
+
+typedef enum
+{
+    ST_SOCKS,
+    ST_TELESCOPE,
+} sock_tag_t;
+
+typedef enum
+{
+    INIT,
+    SOCKS_HANDSHAKE_REQUESTED,
+    TUNNEL_HANDSHAKE_FINISHED,
+    READY,
+    PROXY_REQUEST_SENT,
+} sockpair_state_t;
+
+typedef struct ts_sock_s ts_sock_t;
+typedef struct ts_sockpair_s ts_sockpair_t;
+
+typedef void (*ts_sock_handler_t)(ts_sock_t *sock,
+                                  ssize_t nread,
+                                  const uv_buf_t *buf);
+
+struct ts_sock_s
+{
+    int offset;
+    char buffer[TS_SOCK_BUF_SIZE];
+    sock_tag_t tag;
+    uv_tcp_t stream;
+    ts_sock_t *peer;
+    ts_sockpair_t *pair;
+    ts_sock_handler_t handler;
+};
+
+struct ts_sockpair_s
+{
+    sockpair_state_t state;
+    ts_sock_t sock1;
+    ts_sock_t sock2;
+};
+
+ts_sockpair_t *ts_sockpair_init(uv_loop_t *loop)
+{
+    ts_sockpair_t *sp = malloc(sizeof(ts_sockpair_t));
+    memset(sp, 0, sizeof(ts_sockpair_t));
+    uv_tcp_init(loop, &sp->sock1.stream);
+    uv_tcp_init(loop, &sp->sock2.stream);
+    sp->sock1.stream.data = (void *)&sp->sock1;
+    sp->sock2.stream.data = (void *)&sp->sock2;
+    sp->sock1.pair = sp;
+    sp->sock2.pair = sp;
+    sp->sock1.peer = &sp->sock2;
+    sp->sock2.peer = &sp->sock1;
+    return sp;
+}
+
+void ts_sockpair_deinit(ts_sockpair_t *pair)
+{
+    uv_close((uv_handle_t *)&pair->sock1.stream, NULL);
+    uv_close((uv_handle_t *)&pair->sock2.stream, NULL);
+    free(pair);
+}
 
 void alloc_buffer(uv_handle_t *handle,
                   size_t suggested_size,
@@ -15,446 +81,315 @@ void alloc_buffer(uv_handle_t *handle,
     *buf = uv_buf_init((char *)malloc(suggested_size), suggested_size);
 }
 
-typedef enum conn_state
+void ts_read(uv_stream_t *stream,
+             ssize_t nread,
+             const uv_buf_t *buf)
 {
-    UNSPEC = -1,
-    INIT = 0,
-    SOCKS_HANDSHAKE,
-    PEER_ACK,
-    READY,
-    REQUEST,
-} conn_state_t;
-
-typedef enum sock_type
-{
-    SOCK_CLIENT,
-    SOCK_PEER,
-} sock_type_t;
-
-typedef struct
-{
-    enum conn_state state;
-    unsigned char buffer[4096];
-    int offset;
-    char name[1024];
-    char port[512];
-    uv_stream_t *peer;
-    void (*handler)(uv_stream_t *client,
-                    ssize_t nread,
-                    const uv_buf_t *buf);
-} context_t;
-
-enum sock_type get_type(uv_stream_t *sock)
-{
-    context_t *ctx = (context_t *)sock->data;
-    return (ctx->state == UNSPEC) ? SOCK_PEER : SOCK_CLIENT;
+    ts_sock_t *s = (ts_sock_t *)stream->data;
+    memcpy(s->buffer + s->offset, buf->base, nread);
+    s->offset += nread;
+    free(buf->base);
+    // free((void *)buf); // not sure
 }
 
-uv_stream_t *get_peer(uv_stream_t *sock)
+typedef struct ts_write_s
 {
-    context_t *ctx = (context_t *)sock->data;
-    return ctx->peer;
-}
+    uv_write_t req;
+    uv_buf_t data;
+} ts_write_t;
 
-context_t *get_peer_context(uv_stream_t *sock)
+ts_write_t *ts_write_init(ssize_t size)
 {
-    context_t *ctx = (context_t *)sock->data;
-    uv_stream_t *peer = ctx->peer;
-    return (context_t *)peer->data;
-}
-
-void shutdown_sockpair(uv_stream_t *sock)
-{
-    uv_close((uv_handle_t *)sock, NULL);
-    uv_close((uv_handle_t *)get_peer(sock), NULL);
-}
-
-enum conn_state
-get_state(uv_stream_t *sock)
-{
-    context_t *ctx = (context_t *)sock->data;
-    if (ctx->state == UNSPEC)
-    {
-        ctx = (context_t *)ctx->peer->data;
-    }
-    return ctx->state;
-}
-
-void set_state(uv_stream_t *sock, conn_state_t state)
-{
-    context_t *ctx = (context_t *)sock->data;
-    if (ctx->state == UNSPEC)
-    {
-        ctx = (context_t *)ctx->peer->data;
-    }
-    ctx->state = state;
-}
-
-context_t *create_context()
-{
-    context_t *ctx = malloc(sizeof(context_t));
-    memset(ctx, 0, sizeof(context_t));
-    return ctx;
+    ts_write_t *w = malloc(sizeof(ts_write_t));
+    w->req.data = w; // free struct in `on_write`;
+    w->data = uv_buf_init(malloc(size), size);
+    return w;
 }
 
 void on_write(uv_write_t *req, int status)
 {
     if (status < 0)
     {
-        fprintf(stderr, "on_write callback error %s\n", uv_err_name(status));
+        fprintf(stderr, "on_write (%s)\n", uv_strerror(status));
         return;
     }
-    else
-    {
-        // printf("SUCCESS\n");
-    }
+    ts_write_t *w = (ts_write_t *)req->data;
+    free(w->data.base);
+    free(w);
 }
 
-void forward_to_peer(uv_stream_t *socket,
+void forward_to_peer(ts_sock_t *s,
                      ssize_t nread,
                      const uv_buf_t *buf)
 {
-    if (nread < 0)
-    {
-        if (nread != UV_EOF)
-            fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-        // uv_close((uv_handle_t *)socket, NULL);
-        // uv_close((uv_handle_t *)((context_t *)socket->data)->peer, NULL);
-        return;
-    }
-    // printf("FORWARD\n");
-    assert(socket);
-    context_t *ctx = (context_t *)socket->data;
-    assert(ctx);
-    uv_stream_t *peer = ctx->peer;
-    assert(peer);
-    uv_write_t *req = malloc(sizeof(uv_write_t));
-    // printf("size:%zd\n", nread);
-    uv_buf_t *out_buf = malloc(sizeof(uv_buf_t));
-    *out_buf = uv_buf_init(malloc(nread), nread);
-    memcpy(out_buf->base, buf->base, nread);
-    uv_write(req, peer, out_buf, 1, on_write);
-}
-
-void buffer(uv_stream_t *client,
-            ssize_t nread,
-            const uv_buf_t *buf)
-{
-    context_t *ctx = (context_t *)client->data;
-    memcpy(ctx->buffer + ctx->offset, buf->base, nread);
-    ctx->offset += nread;
-    // free(buf->base);
-}
-
-void handle_client(uv_stream_t *sock,
-                   ssize_t nread,
-                   const uv_buf_t *buf)
-{
-    if (nread < 0)
-    {
-        if (nread != UV_EOF)
-            fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-        uv_close((uv_handle_t *)sock, NULL);
-        uv_close((uv_handle_t *)get_peer(sock), NULL);
-        return;
-    }
-
     if (nread == 0)
+        return;
+    if (nread < 0)
     {
-        printf("uh oh = 0\n");
+        ts_sockpair_deinit(s->pair);
+        if (nread != UV_EOF)
+        {
+            fprintf(stderr, "on_tunnel_read (%s)\n", uv_err_name(nread));
+        }
         return;
     }
+    ts_write_t *w = ts_write_init(nread);
+    memcpy(w->data.base, buf->base, nread);
+    uv_write(&w->req, (uv_stream_t *)&s->peer->stream, &w->data, 1, on_write);
+}
 
-    context_t *ctx = (context_t *)sock->data;
+void finish_handshake(ts_sockpair_t *sp)
+{
+    ts_write_t *w = ts_write_init(2);
+    memcpy(w->data.base, "\x05\x00", 2);
+    uv_write(&w->req, (uv_stream_t *)&sp->sock1.stream, &w->data, 1, on_write);
+    sp->sock1.offset = 0;
+    sp->sock2.offset = 0;
+    sp->state = READY;
+}
 
-    buffer(sock, nread, buf);
+void on_client_read(ts_sock_t *s,
+                    ssize_t nread,
+                    const uv_buf_t *buf)
+{
+    if (nread == 0)
+        return;
+    if (nread < 0)
+    {
+        ts_sockpair_deinit(s->pair);
+        if (nread != UV_EOF)
+        {
+            fprintf(stderr, "on_tunnel_read (%s)\n", uv_err_name(nread));
+        }
+        return;
+    }
+    ts_read((uv_stream_t *)&s->stream, nread, buf);
 
-    conn_state_t state = get_state(sock);
-    switch (state)
+    switch (s->pair->state)
     {
     case INIT:
     {
-
-        if (ctx->offset < 1)
+        if (s->offset < 2)
             return;
-        if (ctx->buffer[0] != '\x05')
+        if (s->buffer[0] != '\x05')
         {
-            fprintf(stderr, "(1) SOCKs version not supported");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_client_read/INIT (socks version)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
 
-        if (ctx->offset < 2)
+        unsigned char nmethods = (unsigned char)s->buffer[1];
+        if (s->offset < 2 + nmethods)
             return;
-
-        int nmethods = ctx->buffer[1];
-
-        if (ctx->offset < 2 + nmethods)
-            return;
-
-        if (ctx->offset > 2 + nmethods)
+        if (s->offset > 2 + nmethods)
         {
-            fprintf(stderr, "received more methods");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_client_read/INIT (nmethods doesn't match)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
-        set_state(sock, SOCKS_HANDSHAKE);
+
+        s->pair->state = SOCKS_HANDSHAKE_REQUESTED;
         break;
     }
-    case PEER_ACK:
+    case TUNNEL_HANDSHAKE_FINISHED:
     {
-
-        if (ctx->offset < 1)
+        if (s->offset < 2)
             return;
-        if (ctx->buffer[0] != '\x05')
+        if (s->buffer[0] != '\x05')
         {
-            fprintf(stderr, "(1) SOCKs version not supported");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_client_read/INIT (socks version)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
 
-        if (ctx->offset < 2)
+        int nmethods = s->buffer[1];
+        if (s->offset < 2 + nmethods)
             return;
-
-        int nmethods = ctx->buffer[1];
-
-        if (ctx->offset < 2 + nmethods)
-            return;
-
-        if (ctx->offset > 2 + nmethods)
+        if (s->offset > 2 + nmethods)
         {
-            fprintf(stderr, "received more methods");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_client_read/INIT (nmethods doesn't match)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
 
-        uv_write_t *write_req = malloc(sizeof(uv_write_t));
-        uv_buf_t *out_buf = malloc(sizeof(uv_buf_t));
-        *out_buf = uv_buf_init(strdup("\x05\x00"), 2);
-        uv_write(write_req, sock, out_buf, 1, NULL);
-        get_peer_context(sock)->offset = 0;
-        set_state(sock, READY);
+        finish_handshake(s->pair);
         break;
     }
     case READY:
     {
+        // +-----+-----+-----+------+-------+------+------+
+        // |  0  |  1  |  2  |  3   |   4   | ...  | ...  |
+        // +-----+-----+-----+------+-------+------+------+
+        // | VER | CMD | RSV | ATYP | NADDR | NAME | PORT |
+        // +-----+-----+-----+------+-------+------+------+
 
-        if (ctx->buffer[0] != '\x05')
+        if (s->offset < 5)
+            return;
+        if (s->buffer[0] != '\x05')
         {
-            fprintf(stderr, "(2) SOCKs version not supported");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_client_read/READY (socks version)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
-        if (ctx->offset < 2)
-            return;
-        if (ctx->buffer[1] != '\x01')
+        if (s->buffer[1] != '\x01')
         {
-            fprintf(stderr, "(2) SOCKs command not supported");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_client_read/READY (socks command)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
-        if (ctx->offset < 4)
-            return;
-
-        if (ctx->buffer[3] != '\x03')
+        if (s->buffer[3] != '\x03')
         {
-            fprintf(stderr, "IPV4/6 not supported");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_client_read/READY (address type)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
-        if (ctx->offset < 5)
+
+        unsigned char naddr = (unsigned char)s->buffer[4];
+        if (s->offset < 5 + naddr + 2)
             return;
 
-        unsigned char naddr = ctx->buffer[4];
-
-        if (ctx->offset < 5 + naddr + 2)
-            return;
-
-        int size = 2 + naddr + 2;
-        uv_buf_t *out_buf = malloc(sizeof(uv_buf_t));
-        *out_buf = uv_buf_init(malloc(size), size);
-        memcpy(out_buf->base, ctx->buffer + 3, 2 + naddr + 2);
-
-        uv_write_t *write_req = malloc(sizeof(uv_write_t));
-        uv_write(write_req, get_peer(sock), out_buf, 1, NULL);
-
-        set_state(sock, REQUEST);
+        int frame_size = naddr + 4;
+        ts_write_t *w = ts_write_init(frame_size);
+        memcpy(w->data.base, s->buffer + 3, frame_size);
+        uv_write(&w->req, (uv_stream_t *)&s->peer->stream, &w->data, 1, on_write);
+        s->pair->state = PROXY_REQUEST_SENT;
         break;
     }
     default:
-        fprintf(stderr, "not expected %d", state);
-        shutdown_sockpair(sock);
+        fprintf(stderr, "on_client_read/default (invalid state/input)");
+        ts_sockpair_deinit(s->pair);
     }
 }
 
-void handle_peer(uv_stream_t *sock,
-                 ssize_t nread,
-                 const uv_buf_t *buf)
+void on_tunnel_read(ts_sock_t *s,
+                    ssize_t nread,
+                    const uv_buf_t *buf)
 {
+    if (nread == 0)
+        return;
     if (nread < 0)
     {
+        ts_sockpair_deinit(s->pair);
         if (nread != UV_EOF)
-            fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-        uv_close((uv_handle_t *)sock, NULL);
-        uv_close((uv_handle_t *)get_peer(sock), NULL);
+        {
+            fprintf(stderr, "on_tunnel_read (%s)\n", uv_err_name(nread));
+        }
         return;
     }
+    ts_read((uv_stream_t *)&s->stream, nread, buf);
 
-    if (nread == 0)
-    {
-        printf("uh oh = 0\n");
-        return;
-    }
-
-    context_t *ctx = (context_t *)sock->data;
-    buffer(sock, nread, buf);
-
-    conn_state_t state = get_state(sock);
-    switch (state)
+    switch (s->pair->state)
     {
     case INIT:
     {
-        if (ctx->offset < 13)
+        if (s->offset < PADDING_SIZE)
             return;
-        if (ctx->offset > 13)
+        if (s->offset > PADDING_SIZE)
         {
-            fprintf(stderr, "[SH] shouldn't send more data!!");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_tunnel_read/INIT (padding too long)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
-        ctx->offset = 0;
-        set_state(sock, PEER_ACK);
+        s->pair->state = TUNNEL_HANDSHAKE_FINISHED;
         break;
     }
-    case SOCKS_HANDSHAKE:
+    case SOCKS_HANDSHAKE_REQUESTED:
     {
-        if (ctx->offset < 13)
+        if (s->offset < PADDING_SIZE)
             return;
-        if (ctx->offset > 13)
+        if (s->offset > PADDING_SIZE)
         {
-            fprintf(stderr, "[SH] shouldn't send more data!!");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_tunnel_read/SOCKS_HANDSHAKE_REQUESTED (padding too long)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
-        ctx->offset = 0;
-        // ACK no auth
-        uv_write_t *write_req = malloc(sizeof(uv_write_t));
-        uv_buf_t *out_buf = malloc(sizeof(uv_buf_t));
-        *out_buf = uv_buf_init(strdup("\x05\x00"), 2);
-        uv_write(write_req, get_peer(sock), out_buf, 1, NULL);
-        get_peer_context(sock)->offset = 0;
-        set_state(sock, READY);
+        finish_handshake(s->pair);
         break;
     }
-    case REQUEST:
+    case PROXY_REQUEST_SENT:
     {
-        if (ctx->offset < 7)
+        if (s->offset < TELES_RES_SIZE)
             return;
-        if (ctx->offset > 7)
+        if (s->offset > TELES_RES_SIZE)
         {
-            fprintf(stderr, "[RQ] shouldn't send more data!!");
-            shutdown_sockpair(sock);
+            fprintf(stderr, "on_tunnel_read/PROXY_REQUEST_SENT (address too long)\n");
+            ts_sockpair_deinit(s->pair);
             return;
         }
-        uv_buf_t *out_buf = malloc(sizeof(uv_buf_t));
-        *out_buf = uv_buf_init(malloc(10), 10);
-        out_buf->base[0] = '\x05'; // VER
-        out_buf->base[1] = '\x00'; // ACK
-        out_buf->base[2] = '\x00'; // RSV
-        memcpy(out_buf->base + 3, ctx->buffer, 7);
 
-        // Communication established
-        ctx->handler = forward_to_peer;
-        ((context_t *)ctx->peer->data)->handler = forward_to_peer;
+        // Connection established, just pipe data now.
+        s->handler = s->peer->handler = forward_to_peer;
 
-        uv_write_t *write_req = malloc(sizeof(uv_write_t));
-        uv_write(write_req, get_peer(sock), out_buf, 1, NULL);
+        ts_write_t *w = ts_write_init(SOCKS_RES_SIZE);
+        memcpy(w->data.base, "\x05\x00\x00", 3);             // VER+ACK+RSV
+        memcpy(w->data.base + 3, s->buffer, TELES_RES_SIZE); // ATYP+IP4+PORT
+        uv_write(&w->req, (uv_stream_t *)&s->peer->stream, &w->data, 1, on_write);
         break;
     }
     default:
-        fprintf(stderr, "[default] shouldn't send more data!!");
-        shutdown_sockpair(sock);
+        fprintf(stderr, "on_tunnel_read/default (invalid state/input)");
+        ts_sockpair_deinit(s->pair);
     }
 }
 
-void handle(uv_stream_t *sock,
-            ssize_t nread,
-            const uv_buf_t *buf)
+void on_read(uv_stream_t *stream,
+             ssize_t nread,
+             const uv_buf_t *buf)
 {
-    context_t *ctx = (context_t *)sock->data;
-    ctx->handler(sock, nread, buf);
+    ts_sock_t *s = (ts_sock_t *)stream->data;
+    s->handler(s, nread, buf);
 }
 
-void on_peer_connected(uv_connect_t *req, int status)
+void on_tunnel_connected(uv_connect_t *req, int status)
 {
-    uv_stream_t *peer = (uv_stream_t *)req->data;
-    context_t *peer_ctx = (context_t *)peer->data;
-    uv_stream_t *client = peer_ctx->peer;
-    context_t *ctx = (context_t *)client->data;
+    ts_sockpair_t *sp = (ts_sockpair_t *)req->data;
 
-    ctx->handler = handle_client;
-    peer_ctx->handler = handle_peer;
-    uv_read_start(client, alloc_buffer, handle);
-    uv_read_start(peer, alloc_buffer, handle);
+    sp->sock1.handler = on_client_read;
+    sp->sock2.handler = on_tunnel_read;
+    uv_read_start((uv_stream_t *)&sp->sock1.stream, alloc_buffer, on_read);
+    uv_read_start((uv_stream_t *)&sp->sock2.stream, alloc_buffer, on_read);
 
-    uv_write_t *write_req = malloc(sizeof(uv_write_t));
-    uv_buf_t *buf = malloc(sizeof(uv_buf_t));
-    *buf = uv_buf_init((char *)ctx->buffer, 13);
-    uv_write(write_req, peer, buf, 1, NULL);
+    ts_write_t *w = ts_write_init(PADDING_SIZE);
+    uv_write(&w->req, (uv_stream_t *)&sp->sock2.stream, &w->data, 1, on_write);
+
+    free(req);
 }
 
-void contact_peer(uv_stream_t *client)
+void tunnel_connect(ts_sockpair_t *sp)
 {
-
-    uv_tcp_t *peer = malloc(sizeof(uv_tcp_t));
-    uv_tcp_init(loop, peer);
-
-    context_t *ctx = create_context();
-    ctx->peer = (uv_stream_t *)peer;
-    client->data = (void *)ctx;
-
-    context_t *peer_ctx = create_context();
-    peer_ctx->state = UNSPEC;
-    peer_ctx->peer = client;
-    peer->data = (void *)peer_ctx;
-
-    uv_connect_t *req = (uv_connect_t *)malloc(sizeof(uv_connect_t));
-    req->data = (void *)peer;
     struct sockaddr_in addr;
-    uv_ip4_addr(peer_addr, atoi(peer_port), &addr);
-    uv_tcp_connect(req, peer, (const struct sockaddr *)&addr, on_peer_connected);
+    uv_ip4_addr(remote_addr, atoi(remote_port), &addr);
+
+    uv_connect_t *req = malloc(sizeof(uv_connect_t));
+    req->data = (void *)sp;
+    uv_tcp_connect(req, &sp->sock2.stream, (struct sockaddr *)&addr, on_tunnel_connected);
 }
 
-void on_new_connection(uv_stream_t *server, int status)
+void on_client_connection(uv_stream_t *server, int status)
 {
-    // printf("new connection\n");
     if (status < 0)
     {
-        fprintf(stderr, "New connection error %s\n", uv_strerror(status));
+        fprintf(stderr, "on_client_connection (%s)\n", uv_strerror(status));
         return;
     }
-
-    uv_tcp_t *client = (uv_tcp_t *)malloc(sizeof(uv_tcp_t));
-    uv_tcp_init(loop, client);
-    if (uv_accept(server, (uv_stream_t *)client) == 0)
+    ts_sockpair_t *sp = ts_sockpair_init(loop);
+    if (uv_accept(server, (uv_stream_t *)&sp->sock1.stream))
     {
-        contact_peer((uv_stream_t *)client);
+        ts_sockpair_deinit(sp);
+        return;
     }
-    else
-    {
-        uv_close((uv_handle_t *)client, NULL);
-    }
+    tunnel_connect(sp);
 }
 
 int main(int argc, const char **argv)
 {
     if (argc < 4)
     {
-        fprintf(stderr, "./remote [port] [remote-ip] [remote-port]\n");
+        fprintf(stderr, "Usage: uv_remote [port] [remote-ip] [remote-port]\n");
         return 1;
     }
-    peer_addr = argv[2];
-    peer_port = argv[3];
+    remote_addr = argv[2];
+    remote_port = argv[3];
 
     signal(SIGPIPE, SIG_IGN);
 
@@ -462,19 +397,25 @@ int main(int argc, const char **argv)
     uv_loop_init(loop);
 
     uv_tcp_t server;
-    uv_tcp_init(loop, &server);
-
     struct sockaddr_in addr;
-    uv_ip4_addr("0.0.0.0", atoi(argv[1]), &addr);
+    int port = atoi(argv[1]);
+
+    uv_tcp_init(loop, &server);
+    uv_ip4_addr("0.0.0.0", port, &addr);
     uv_tcp_bind(&server, (const struct sockaddr *)&addr, 0);
 
     int r;
-    if ((r = uv_listen((uv_stream_t *)&server, 10, on_new_connection)))
+    if ((r = uv_listen((uv_stream_t *)&server, 10, on_client_connection)))
     {
-        fprintf(stderr, "Listen error %s\n", uv_strerror(r));
+        fprintf(stderr, "main/uv_listen (%s)\n", uv_strerror(r));
         return 1;
     }
-    return uv_run(loop, UV_RUN_DEFAULT);
+
+    if (uv_run(loop, UV_RUN_DEFAULT))
+    {
+        fprintf(stderr, "main/uv_run (%s)\n", uv_strerror(r));
+        return 1;
+    }
 
     uv_loop_close(loop);
     free(loop);
