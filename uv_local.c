@@ -111,7 +111,6 @@ void on_write(uv_write_t *req, int status)
     if (status < 0)
     {
         fprintf(stderr, "on_write (%s)\n", uv_strerror(status));
-        return;
     }
     ts_write_t *w = (ts_write_t *)req->data;
     free(w->data.base);
