@@ -49,8 +49,10 @@ struct ts_sockpair_s
     ts_sock_t sock2;
 };
 
+int total_sockpair;
 ts_sockpair_t *ts_sockpair_init(uv_loop_t *loop)
 {
+    printf("init pair, total=%d\n", ++total_sockpair);
     ts_sockpair_t *sp = malloc(sizeof(ts_sockpair_t));
     memset(sp, 0, sizeof(ts_sockpair_t));
     sp->state = INIT;
@@ -72,6 +74,7 @@ void on_sockpair_close(uv_handle_t *handle)
     ts_sockpair_t *sp = sock->pair;
     if (--sp->state == CLOSED)
     {
+        printf("free pair, total=%d\n", --total_sockpair);
         free(sp);
     }
 }
@@ -83,10 +86,13 @@ void ts_sockpair_deinit(ts_sockpair_t *sp)
     uv_close((uv_handle_t *)&sp->sock2.stream, on_sockpair_close);
 }
 
+int total_buffer = 0;
 void alloc_buffer(uv_handle_t *handle,
                   size_t suggested_size,
                   uv_buf_t *buf)
 {
+
+    // printf("alloc buffer, total=%d\n", ++total_buffer);
     *buf = uv_buf_init((char *)malloc(suggested_size), suggested_size);
 }
 
@@ -97,10 +103,12 @@ void ts_read(uv_stream_t *stream,
     ts_sock_t *s = (ts_sock_t *)stream->data;
     memcpy(s->buffer + s->offset, buf->base, nread);
     s->offset += nread;
+    // printf("free buffer, total=%d\n", --total_buffer);
     free(buf->base);
     // free((void *)buf); // not sure
 }
 
+int total_write = 0;
 typedef struct ts_write_s
 {
     uv_write_t req;
@@ -109,6 +117,7 @@ typedef struct ts_write_s
 
 ts_write_t *ts_write_init(ssize_t size)
 {
+    // printf("alloc write, total=%d\n", ++total_write);
     ts_write_t *w = malloc(sizeof(ts_write_t));
     w->req.data = w; // free struct in `on_write`;
     w->data = uv_buf_init(malloc(size), size);
@@ -122,6 +131,7 @@ void on_write(uv_write_t *req, int status)
         fprintf(stderr, "on_write (%s)\n", uv_strerror(status));
     }
     ts_write_t *w = (ts_write_t *)req->data;
+    // printf("free write, total=%d\n", --total_write);
     free(w->data.base);
     free(w);
 }
@@ -139,7 +149,11 @@ void forward_to_peer(ts_sock_t *s,
                      const uv_buf_t *buf)
 {
     if (nread == 0)
+    {
+        // printf("free buffer, total=%d\n", --total_buffer);
+        free(buf->base);
         return;
+    }
     if (nread < 0)
     {
         ts_sockpair_deinit(s->pair);
@@ -147,11 +161,15 @@ void forward_to_peer(ts_sock_t *s,
         {
             fprintf(stderr, "on_tunnel_read (%s)\n", uv_err_name(nread));
         }
+        // printf("free buffer, total=%d\n", --total_buffer);
+        free(buf->base);
         return;
     }
     ts_write_t *w = ts_write_init(nread);
     memcpy(w->data.base, buf->base, nread);
     uv_write(&w->req, (uv_stream_t *)&s->peer->stream, &w->data, 1, on_write);
+    // printf("free buffer, total=%d\n", --total_buffer);
+    free(buf->base); // !!!!
 }
 
 void finish_handshake(ts_sockpair_t *sp)
@@ -169,7 +187,11 @@ void on_client_read(ts_sock_t *s,
                     const uv_buf_t *buf)
 {
     if (nread == 0)
+    {
+        // printf("free buffer, total=%d\n", --total_buffer);
+        free(buf->base);
         return;
+    }
     if (nread < 0)
     {
         ts_sockpair_deinit(s->pair);
@@ -177,6 +199,8 @@ void on_client_read(ts_sock_t *s,
         {
             fprintf(stderr, "on_tunnel_read (%s)\n", uv_err_name(nread));
         }
+        // printf("free buffer, total=%d\n", --total_buffer);
+        free(buf->base);
         return;
     }
     ts_read((uv_stream_t *)&s->stream, nread, buf);
@@ -282,7 +306,11 @@ void on_tunnel_read(ts_sock_t *s,
                     const uv_buf_t *buf)
 {
     if (nread == 0)
+    {
+        // printf("free buffer, total=%d\n", --total_buffer);
+        free(buf->base);
         return;
+    }
     if (nread < 0)
     {
         ts_sockpair_deinit(s->pair);
@@ -290,6 +318,8 @@ void on_tunnel_read(ts_sock_t *s,
         {
             fprintf(stderr, "on_tunnel_read (%s)\n", uv_err_name(nread));
         }
+        // printf("free buffer, total=%d\n", --total_buffer);
+        free(buf->base);
         return;
     }
     ts_read((uv_stream_t *)&s->stream, nread, buf);
@@ -348,6 +378,7 @@ void on_tunnel_read(ts_sock_t *s,
     }
 }
 
+int total_connect = 0;
 void on_tunnel_connected(uv_connect_t *req, int status)
 {
     ts_sockpair_t *sp = (ts_sockpair_t *)req->data;
@@ -360,6 +391,8 @@ void on_tunnel_connected(uv_connect_t *req, int status)
     ts_write_t *w = ts_write_init(PADDING_SIZE);
     uv_write(&w->req, (uv_stream_t *)&sp->sock2.stream, &w->data, 1, on_write);
 
+    printf("free connect, %d\n", --total_connect);
+    // uv_close((uv_handle_t *)req, NULL);
     free(req);
 }
 
@@ -368,6 +401,7 @@ void tunnel_connect(ts_sockpair_t *sp)
     struct sockaddr_in addr;
     uv_ip4_addr(remote_addr, atoi(remote_port), &addr);
 
+    printf("malloc connect, total=%d\n", ++total_connect);
     uv_connect_t *req = malloc(sizeof(uv_connect_t));
     req->data = (void *)sp;
     uv_tcp_connect(req, &sp->sock2.stream, (struct sockaddr *)&addr, on_tunnel_connected);
